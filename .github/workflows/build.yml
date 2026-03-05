@@ -10,18 +10,18 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
       
       - name: Install dependencies
         run: npm install
         
-      - name: Capacitor Sync
+      - name: Setup Capacitor
         run: |
-          npx cap add android
+          npx cap add android || echo "Already exists"
           npx cap sync android
           
       - name: Build APK (Debug)
@@ -31,36 +31,41 @@ jobs:
           ./gradlew assembleDebug
           
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: BitChat-Android-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
   build-ios:
     name: Build iOS App
-    runs-on: macos-latest
+    runs-on: macos-14 # Daha stabil ve yeni bir macOS sürümü
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           
       - name: Install dependencies
         run: npm install
         
-      - name: Capacitor Sync
+      - name: Setup Capacitor
         run: |
-          npx cap add ios
+          npx cap add ios || echo "Already exists"
           npx cap sync ios
           
       - name: Build iOS (Xcode)
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -sdk iphoneos -configuration Debug -allowProvisioningUpdates build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -sdk iphoneos -derivedDataPath build -allowProvisioningUpdates CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO 
           
-      - name: Upload iOS App Artifact (Zip)
-        uses: actions/upload-artifact@v3
+      - name: Zip iOS App
+        run: |
+          cd ios/App/build/Build/Products/Debug-iphoneos
+          zip -r ../../../../BitChat.app.zip App.app
+          
+      - name: Upload iOS App Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: BitChat-iOS-App
-          path: ios/App/build/Release-iphoneos/App.app # Bu klasörü Sideloadly ile IPA'ya çevirebilirsin.
+          path: ios/App/BitChat.app.zip
