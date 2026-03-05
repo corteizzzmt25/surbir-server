@@ -21,8 +21,14 @@ jobs:
         
       - name: Setup Capacitor
         run: |
-          npx cap add android || echo "Already exists"
-          npx cap sync android
+          npm install @capacitor/cli @capacitor/core @capacitor/android
+          # Eğer klasör varsa sync yap, yoksa ekle ve sync yap
+          if [ -d "android" ]; then
+            npx cap sync android
+          else
+            npx cap add android
+            npx cap sync android
+          fi
           
       - name: Build APK (Debug)
         run: |
@@ -38,7 +44,7 @@ jobs:
 
   build-ios:
     name: Build iOS App
-    runs-on: macos-14 # Daha stabil ve yeni bir macOS sürümü
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -51,18 +57,24 @@ jobs:
         
       - name: Setup Capacitor
         run: |
-          npx cap add ios || echo "Already exists"
-          npx cap sync ios
+          npm install @capacitor/cli @capacitor/core @capacitor/ios
+          if [ -d "ios" ]; then
+             npx cap sync ios
+          else
+             npx cap add ios
+             npx cap sync ios
+          fi
           
       - name: Build iOS (Xcode)
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -sdk iphoneos -derivedDataPath build -allowProvisioningUpdates CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO 
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -sdk iphoneos -derivedDataPath build -allowProvisioningUpdates CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
           
       - name: Zip iOS App
         run: |
-          cd ios/App/build/Build/Products/Debug-iphoneos
-          zip -r ../../../../BitChat.app.zip App.app
+          # Bu kısımda path'i daha güvenli hale getirdim
+          find ios/App/build -name "*.app" -exec zip -r BitChat.app.zip {} +
+          mv BitChat.app.zip ios/App/BitChat.app.zip
           
       - name: Upload iOS App Artifact
         uses: actions/upload-artifact@v4
