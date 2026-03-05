@@ -1,6 +1,6 @@
 {
   "appId": "com.surbit.bitchat",
-  "appName": "SYP2P",
+  "appName": "BitCep P2P",
   "webDir": "public",
   "bundledWebRuntime": false,
   "server": {
