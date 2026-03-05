@@ -1,0 +1,11 @@
+{
+  "appId": "com.surbit.bitchat",
+  "appName": "SYP2P",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "server": {
+    "allowNavigation": [
+      "*"
+    ]
+  }
+}

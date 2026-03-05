@@ -1,0 +1,16 @@
+{
+    "name": "BitChat Offline",
+    "short_name": "BitChat",
+    "description": "Yerel ağda çalışan internetsiz haberleşme uygulaması.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#09090b",
+    "theme_color": "#7c3aed",
+    "icons": [
+        {
+            "src": "https://cdn-icons-png.flaticon.com/512/1041/1041916.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

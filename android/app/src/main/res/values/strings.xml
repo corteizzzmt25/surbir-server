@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SYP2P</string>
+    <string name="title_activity_main">SYP2P</string>
+    <string name="package_name">com.surbit.bitchat</string>
+    <string name="custom_url_scheme">com.surbit.bitchat</string>
+</resources>
