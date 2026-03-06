@@ -10,6 +10,7 @@ const backToDmBtn = document.getElementById('back-to-dm');
 const chatWithName = document.getElementById('chat-with-name');
 
 const loginOverlay = document.getElementById('login-overlay');
+const loadingOverlay = document.getElementById('loading-overlay');
 const usernameInput = document.getElementById('username-input');
 const loginBtn = document.getElementById('login-btn');
 
@@ -19,10 +20,10 @@ const refuseBtn = document.getElementById('refuse-btn');
 
 // State
 let MY_USERNAME = "";
-let CURRENT_LANG = 'tr';
+let CURRENT_LANG = localStorage.getItem('surbit_lang') || 'tr';
 let CURRENT_CHAT_DEVICE = null;
 let DISCOVERED_DEVICES = [];
-let CHAT_HISTORIES = {}; // { deviceId: [messages] }
+let CHAT_HISTORIES = {};
 
 const translations = {
     tr: {
@@ -37,7 +38,8 @@ const translations = {
         accept: "Kabul Et",
         refuse: "Reddet",
         placeholder: "Mesaj yazın...",
-        p2p_status: "P2P Bağlantısı Aktif"
+        p2p_status: "P2P Bağlantısı Aktif",
+        encryption: "Bluetooth P2P Şifreli 🇸🇾"
     },
     ar: {
         welcome: "سوربيت 🇸🇾",
@@ -51,7 +53,8 @@ const translations = {
         accept: "قبول",
         refuse: "رفض",
         placeholder: "اكتب رسالة...",
-        p2p_status: "اتصال P2P نشط"
+        p2p_status: "اتصال P2P نشط",
+        encryption: "تشفير بلوتوث P2P 🇸🇾"
     },
     en: {
         welcome: "Surbit 🇸🇾",
@@ -65,14 +68,20 @@ const translations = {
         accept: "Accept",
         refuse: "Refuse",
         placeholder: "Type a message...",
-        p2p_status: "P2P Connection Active"
+        p2p_status: "P2P Connection Active",
+        encryption: "Bluetooth P2P Encrypted 🇸🇾"
     }
 };
 
 // 1. Language Logic
 window.changeLanguage = (lang) => {
     CURRENT_LANG = lang;
-    const t = translations[lang];
+    localStorage.setItem('surbit_lang', lang);
+    applyTranslations();
+};
+
+function applyTranslations() {
+    const t = translations[CURRENT_LANG];
     document.getElementById('lang-welcome').innerText = t.welcome;
     document.getElementById('lang-instruction').innerText = t.instruction;
     document.getElementById('login-btn').innerText = t.login_btn;
@@ -83,11 +92,12 @@ window.changeLanguage = (lang) => {
     document.getElementById('refuse-btn').innerText = t.refuse;
     document.getElementById('message-input').placeholder = t.placeholder;
     document.getElementById('lang-p2p-status').innerText = t.p2p_status;
+    document.getElementById('lang-encryption').innerText = t.encryption;
 
-    // UI Update
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-    event.target.classList.add('active');
-};
+    const activeBtn = document.getElementById(`lang-${CURRENT_LANG}`);
+    if (activeBtn) activeBtn.classList.add('active');
+}
 
 // 2. Discovery
 async function startDiscovery() {
@@ -100,18 +110,20 @@ async function startDiscovery() {
         const Ble = window.Capacitor.Plugins.BluetoothLe;
         try {
             await Ble.initialize();
+            // Permissions request for better real device discovery
+            await Ble.requestPermissions();
+
             await Ble.requestLEScan();
             Ble.addListener('onScanResult', (res) => {
-                const name = res.device.name || "P2P Device";
+                const name = res.device.name || "Bilinmeyen Cihaz";
                 if (!DISCOVERED_DEVICES.find(d => d.deviceId === res.device.deviceId)) {
                     DISCOVERED_DEVICES.push(res.device);
                     addDeviceToDmList(name, res.rssi, res.device.deviceId);
                 }
             });
-            setTimeout(() => Ble.stopLEScan(), 10000);
+            setTimeout(() => Ble.stopLEScan(), 15000); // 15s scan
         } catch (e) { console.error("BT Error", e); }
     } else {
-        // Browser Test
         dmList.innerHTML = `<div class="empty-state">${t.no_device}</div>`;
     }
 }
@@ -148,17 +160,12 @@ function showRequest(name, deviceId) {
 function openChat() {
     const { name, deviceId } = CURRENT_CHAT_DEVICE;
     chatWithName.innerText = name;
-
-    // Switch Views
     dmView.classList.replace('view-active', 'view-hidden');
     chatView.classList.replace('view-hidden', 'view-active');
-
-    // Load History
     messagesDiv.innerHTML = '';
     if (CHAT_HISTORIES[deviceId]) {
         CHAT_HISTORIES[deviceId].forEach(m => appendToUI(m.sender, m.text, m.time, m.isMe));
     }
-
     messageInput.disabled = false;
     sendBtn.disabled = false;
     messageInput.focus();
@@ -173,15 +180,11 @@ backToDmBtn.onclick = () => {
 function handleSend() {
     const text = messageInput.value.trim();
     if (!text) return;
-
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const msg = { sender: MY_USERNAME, text, time, isMe: true };
-
-    // Save to History
     const id = CURRENT_CHAT_DEVICE.deviceId;
     if (!CHAT_HISTORIES[id]) CHAT_HISTORIES[id] = [];
     CHAT_HISTORIES[id].push(msg);
-
     appendToUI(MY_USERNAME, text, time, true);
     messageInput.value = '';
     messageInput.focus();
@@ -201,20 +204,38 @@ function appendToUI(sender, text, time, isMe) {
 sendBtn.onclick = handleSend;
 messageInput.onkeypress = (e) => { if (e.key === 'Enter') handleSend(); };
 
-// 5. App Start
+// 5. App Start and Transitions
+function cycleLanguage() {
+    const langs = ['tr', 'ar', 'en'];
+    let idx = langs.indexOf(CURRENT_LANG);
+    idx = (idx + 1) % langs.length;
+    changeLanguage(langs[idx]);
+}
+
+document.getElementById('lang-cycle-btn').onclick = cycleLanguage;
+document.getElementById('chat-lang-cycle-btn').onclick = cycleLanguage;
+
 loginBtn.onclick = () => {
     const name = usernameInput.value.trim();
     if (name) {
         MY_USERNAME = name;
         localStorage.setItem('bitcep_username', name);
-        loginOverlay.style.display = 'none';
-        startDiscovery();
+
+        // Show Loading (Premium Transition)
+        loadingOverlay.classList.remove('loader-hidden');
+
+        setTimeout(() => {
+            loadingOverlay.classList.add('loader-hidden');
+            loginOverlay.style.display = 'none';
+            startDiscovery();
+        }, 1500); // 1.5s loading
     }
 };
 
 btRefreshBtn.onclick = startDiscovery;
 
 document.addEventListener('DOMContentLoaded', () => {
+    applyTranslations();
     const saved = localStorage.getItem('bitcep_username');
     if (saved) {
         MY_USERNAME = saved;

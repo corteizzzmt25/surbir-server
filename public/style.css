@@ -51,6 +51,34 @@ header h1 {
     color: var(--black);
 }
 
+/* Language Switcher in Header */
+.lang-icon-btn {
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    padding: 8px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lang-icon-btn:active {
+    transform: scale(0.9);
+    background: #f1f5f9;
+}
+
+.bt-icon {
+    font-size: 1.2rem;
+    padding: 8px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 12px;
+}
+
 /* Dil Seçici */
 .lang-selector {
     display: flex;
@@ -313,6 +341,115 @@ header h1 {
 .modal-btn.primary {
     background: var(--green);
     color: #white;
+}
+
+/* Loading Overlay */
+#loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    z-index: 4000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 1;
+    transition: opacity 0.5s;
+}
+
+.loader-hidden {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* iOS Style Spinner */
+.ios-spinner {
+    position: relative;
+    width: 60px;
+    height: 60px;
+}
+
+.ios-spinner div {
+    position: absolute;
+    width: 6%;
+    height: 25%;
+    background: #555;
+    left: 47%;
+    top: 37.5%;
+    opacity: 0;
+    border-radius: 50px;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.1);
+    animation: fade 1s linear infinite;
+}
+
+@keyframes fade {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0.15;
+    }
+}
+
+.ios-spinner div:nth-child(1) {
+    transform: rotate(0deg) translate(0, -142%);
+    animation-delay: 0s;
+}
+
+.ios-spinner div:nth-child(2) {
+    transform: rotate(30deg) translate(0, -142%);
+    animation-delay: -0.9167s;
+}
+
+.ios-spinner div:nth-child(3) {
+    transform: rotate(60deg) translate(0, -142%);
+    animation-delay: -0.833s;
+}
+
+.ios-spinner div:nth-child(4) {
+    transform: rotate(90deg) translate(0, -142%);
+    animation-delay: -0.75s;
+}
+
+.ios-spinner div:nth-child(5) {
+    transform: rotate(120deg) translate(0, -142%);
+    animation-delay: -0.667s;
+}
+
+.ios-spinner div:nth-child(6) {
+    transform: rotate(150deg) translate(0, -142%);
+    animation-delay: -0.5833s;
+}
+
+.ios-spinner div:nth-child(7) {
+    transform: rotate(180deg) translate(0, -142%);
+    animation-delay: -0.5s;
+}
+
+.ios-spinner div:nth-child(8) {
+    transform: rotate(210deg) translate(0, -142%);
+    animation-delay: -0.4167s;
+}
+
+.ios-spinner div:nth-child(9) {
+    transform: rotate(240deg) translate(0, -142%);
+    animation-delay: -0.333s;
+}
+
+.ios-spinner div:nth-child(10) {
+    transform: rotate(270deg) translate(0, -142%);
+    animation-delay: -0.25s;
+}
+
+.ios-spinner div:nth-child(11) {
+    transform: rotate(300deg) translate(0, -142%);
+    animation-delay: -0.1667s;
+}
+
+.ios-spinner div:nth-child(12) {
+    transform: rotate(330deg) translate(0, -142%);
+    animation-delay: -0.0833s;
 }
 
 .badge {

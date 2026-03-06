@@ -17,15 +17,33 @@
     <div id="login-overlay">
         <div class="login-card">
             <div class="lang-selector">
-                <button class="lang-btn active" onclick="changeLanguage('tr')">🇹🇷</button>
-                <button class="lang-btn" onclick="changeLanguage('ar')">🇸🇾</button>
-                <button class="lang-btn" onclick="changeLanguage('en')">🇺🇸</button>
+                <button class="lang-btn" id="lang-tr" onclick="changeLanguage('tr')">🇹🇷</button>
+                <button class="lang-btn" id="lang-ar" onclick="changeLanguage('ar')">🇸🇾</button>
+                <button class="lang-btn" id="lang-en" onclick="changeLanguage('en')">🇺🇸</button>
             </div>
             <h2 id="lang-welcome">Surbit 🇸🇾</h2>
             <p id="lang-instruction">Lütfen bir rumuz girerek başlayın.</p>
             <input type="text" id="username-input" placeholder="Rumuz..." maxlength="15">
             <button class="login-btn" id="login-btn">Bağlan</button>
             <p class="encryption-msg" id="lang-encryption">Bluetooth P2P Şifreli 🇸🇾</p>
+        </div>
+    </div>
+
+    <!-- Loading Ekranı (iPhone Style) -->
+    <div id="loading-overlay" class="loader-hidden">
+        <div class="ios-spinner">
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
         </div>
     </div>
 
@@ -39,7 +57,10 @@
                     <h1 id="app-title">Surbit 🇸🇾</h1>
                     <div id="status-badge" class="badge">Bluetooth Aktif</div>
                 </div>
-                <div id="bt-refresh" class="bt-icon">🔄 Tara</div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button id="lang-cycle-btn" class="lang-icon-btn">🌐</button>
+                    <div id="bt-refresh" class="bt-icon">🔄</div>
+                </div>
             </header>
 
             <div id="dm-list-container">
@@ -53,13 +74,14 @@
         <!-- Chat Görünümü -->
         <div id="chat-view" class="view-hidden">
             <header>
-                <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="display: flex; align-items: center; gap: 15px; flex: 1;">
                     <button id="back-to-dm" class="icon-btn">⬅️</button>
                     <div class="chat-header-info">
                         <div id="chat-with-name">...</div>
                         <div class="chat-status" id="lang-p2p-status">P2P Bağlantısı Aktif</div>
                     </div>
                 </div>
+                <button id="chat-lang-cycle-btn" class="lang-icon-btn">🌐</button>
             </header>
 
             <div id="messages-window">
