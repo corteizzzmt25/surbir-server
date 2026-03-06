@@ -39,19 +39,50 @@
 
     <!-- Main App Container -->
     <div class="container">
-        <header>
-            <div class="header-main">
-                <h1 id="app-title">SYP2P</h1>
-                <div id="device-info"
-                    style="font-size: 0.65rem; opacity: 0.6; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Cihaz Tanımlanıyor...</div>
-            </div>
-            <div id="bt-scan" class="bt-icon">Bluetooth P2P</div>
-        </header>
+        <!-- DM List / Home View -->
+        <div id="dm-view" class="view-active">
+            <header>
+                <div class="header-main">
+                    <h1>Surbit 🇸🇾</h1>
+                    <div id="status-badge" class="badge">Bluetooth Aktif</div>
+                </div>
+                <div id="bt-refresh" class="bt-icon" title="Cihazları Tara">🔄 Tara</div>
+            </header>
 
-        <div id="chat-window">
-            <div class="system-msg">P2P Ağı Kararlı</div>
-            <div id="messages"></div>
+            <div id="dm-list-container">
+                <div class="dm-section-title">Aktif P2P Cihazları</div>
+                <div id="dm-list">
+                    <!-- Discovered devices will appear here like WhatsApp chats -->
+                    <div class="empty-state">Yakındaki cihazları bulmak için taranıyor...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat View (Hidden by default) -->
+        <div id="chat-view" class="view-hidden">
+            <header>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <button id="back-to-dm" class="icon-btn">⬅️</button>
+                    <div class="chat-header-info">
+                        <div id="chat-with-name">Bilinmeyen Cihaz</div>
+                        <div class="chat-status">P2P Bağlantısı Aktif</div>
+                    </div>
+                </div>
+            </header>
+
+            <div id="messages-window">
+                <div id="messages"></div>
+            </div>
+
+            <!-- Premium WhatsApp-style Input Bar -->
+            <div class="chat-footer">
+                <button class="action-btn" id="attach-plus-btn">➕</button>
+                <div class="input-wrapper">
+                    <input type="text" id="message-input" placeholder="Mesaj yazın..." disabled>
+                </div>
+                <button class="action-btn" id="mic-btn">🎤</button>
+                <button id="send-btn" disabled>🚀</button>
+            </div>
         </div>
 
         <!-- Voice Recorder Visualizer Popover -->
@@ -60,15 +91,21 @@
             <span id="recorder-time">00:00</span>
         </div>
 
-        <footer>
-            <button class="action-btn" id="attach-btn" title="Dosya Ekle">📎</button>
-            <input type="text" id="message-input" placeholder="Mesaj..." disabled>
-            <button class="action-btn" id="mic-btn" title="Sesli Mesaj">🎤</button>
-            <button id="send-btn" disabled>🚀</button>
-            </header>
+        <!-- Hidden Inputs for Media -->
+        <input type="file" id="photo-input" accept="image/*" style="display: none;">
+    </div>
 
-            <!-- Hidden Inputs for Media -->
-            <input type="file" id="photo-input" accept="image/*" style="display: none;">
+    <!-- Connection Request Modal -->
+    <div id="request-modal" class="modal-hidden">
+        <div class="modal-content">
+            <div class="request-icon">📡</div>
+            <h3 id="request-title">Bağlantı İsteği</h3>
+            <p id="request-msg">Bir cihaz seninle mesajlaşmak istiyor.</p>
+            <div class="modal-actions">
+                <button id="refuse-btn" class="modal-btn secondary">Reddet</button>
+                <button id="accept-btn" class="modal-btn primary">Kabul Et</button>
+            </div>
+        </div>
     </div>
 
     <!-- Bluetooth Discovery Modal -->

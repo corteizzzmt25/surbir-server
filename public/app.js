@@ -1,263 +1,158 @@
-// DOM Elements
+// DOM Elements - Versiyon: Bluetooth P2P Premium
+const dmView = document.getElementById('dm-view');
+const chatView = document.getElementById('chat-view');
+const dmList = document.getElementById('dm-list');
 const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
-const btScanBtn = document.getElementById('bt-scan');
-const discoveryModal = document.getElementById('discovery-modal');
-const closeModalBtn = document.getElementById('close-modal');
-const btStatus = document.getElementById('bt-status');
-const deviceList = document.getElementById('device-list');
+const btRefreshBtn = document.getElementById('bt-refresh');
+const backToDmBtn = document.getElementById('back-to-dm');
+const chatWithName = document.getElementById('chat-with-name');
+const attachPlusBtn = document.getElementById('attach-plus-btn');
+const micBtn = document.getElementById('mic-btn');
+const photoInput = document.getElementById('photo-input');
+
+const requestModal = document.getElementById('request-modal');
+const acceptBtn = document.getElementById('accept-btn');
+const refuseBtn = document.getElementById('refuse-btn');
 
 const loginOverlay = document.getElementById('login-overlay');
 const usernameInput = document.getElementById('username-input');
 const loginBtn = document.getElementById('login-btn');
 
-const attachBtn = document.getElementById('attach-btn');
-const micBtn = document.getElementById('mic-btn');
-const photoInput = document.getElementById('photo-input');
-
 const recorderStatus = document.getElementById('recorder-status');
 const recorderTime = document.getElementById('recorder-time');
 
+// App State
 let MY_USERNAME = "";
-let CURRENT_LANG = 'tr';
+let CURRENT_CHAT_DEVICE = null;
+let DISCOVERED_DEVICES = [];
 let mediaRecorder;
 let audioChunks = [];
-let recordTimer;
-let secondsRecord = 0;
 
-const translations = {
-    tr: {
-        welcome: "BitCep P2P",
-        instruction: "BitChat'e hoş geldiniz. Başlamak için bir rumuz girin.",
-        login_btn: "Bağlan",
-        placeholder: "Mesaj...",
-        encryption_msg: "Bluetooth P2P Şifreli Haberleşme 🇸🇾",
-        bt_title: "Cihaz Bulma",
-        bt_instruction: "Çevredeki cihazlar taranıyor... (P2P Aktif)",
-        bt_searching: "Gerçek cihazlar aranıyor...",
-        bt_close: "Kapat",
-        bt_label: "📡 Bluetooth P2P",
-        bt_alert: "Cihazla haberleşme kuruluyor...",
-        nickname_error: "Lütfen bir rumuz girin.",
-        audio_msg: "🎤 Sesli Mesaj",
-        download: "İndir"
-    },
-    ar: {
-        welcome: "بيت جيب P2P",
-        instruction: "مرحباً بك في بيت شات. أدخل اسم مستعار للبدء.",
-        login_btn: "اتصال",
-        placeholder: "رسالة...",
-        encryption_msg: "تشفير بلوتوث P2P (سور-بيت) 🇸🇾",
-        bt_title: "البحث عن أجهزة",
-        bt_instruction: "جاري البحث عن أجهزة محررة... (وضع P2P)",
-        bt_searching: "جاري البحث عن أجهزة حقيقية...",
-        bt_close: "إغلاق",
-        bt_label: "📡 بلوتوث P2P",
-        bt_alert: "جاري الاتصال عبر P2P...",
-        nickname_error: "يرجى إدخال اسم مستعار.",
-        audio_msg: "🎤 رسالة صوتية",
-        download: "تحميل"
-    },
-    en: {
-        welcome: "BitCep P2P",
-        instruction: "Welcome to BitChat. Enter a nickname to start.",
-        login_btn: "Connect",
-        placeholder: "Message...",
-        encryption_msg: "Bluetooth P2P Encrypted 🇸🇾",
-        bt_title: "Device Discovery",
-        bt_instruction: "Scanning for nearby devices... (P2P Enabled)",
-        bt_searching: "Searching for real devices...",
-        bt_close: "Close",
-        bt_label: "📡 Bluetooth P2P",
-        bt_alert: "Establishing P2P Bluetooth connection...",
-        nickname_error: "Please enter a nickname.",
-        audio_msg: "🎤 Voice Message",
-        download: "Download"
-    }
-};
+// Bluetooth UUIDs - P2P Haberleşme için standart
+const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
-window.changeLanguage = (lang) => {
-    CURRENT_LANG = lang;
-    const btns = document.querySelectorAll('.lang-btn');
-    btns.forEach(b => b.classList.remove('active'));
-    if (lang === 'tr') btns[0].classList.add('active');
-    if (lang === 'ar') btns[1].classList.add('active');
-    if (lang === 'en') btns[2].classList.add('active');
-
-    const t = translations[lang];
-    document.getElementById('lang-welcome').innerText = t.welcome;
-    document.getElementById('app-title').innerText = t.welcome;
-    document.getElementById('lang-instruction').innerText = t.instruction;
-    document.getElementById('login-btn').innerText = t.login_btn;
-    document.getElementById('message-input').placeholder = t.placeholder;
-    document.getElementById('lang-encryption-msg').innerText = t.encryption_msg;
-    document.getElementById('bt-scan').innerHTML = (lang === 'tr' ? '<span>Bluetooth P2P</span>' : (lang === 'ar' ? '<span>بلوتوث P2P</span>' : '<span>Bluetooth P2P</span>')) + ' <div class="bt-wave"></div>';
-    if (document.getElementById('lang-bt-title')) document.getElementById('lang-bt-title').innerText = t.bt_title;
-    if (document.getElementById('close-modal')) document.getElementById('close-modal').innerText = t.bt_close;
-};
-
-// Bluetooth Discovery Flow
-
-btScanBtn.addEventListener('click', async () => {
-    discoveryModal.style.display = 'flex';
-    const t = translations[CURRENT_LANG];
-    btStatus.innerText = t.bt_searching;
-    deviceList.innerHTML = `<div class="device-item">${t.bt_searching}</div>`;
+// 1. Bluetooth Taraması ve DM Listesi
+async function startDiscovery() {
+    dmList.innerHTML = '<div class="empty-state">Etraf taranıyor... 🇸🇾</div>';
 
     if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
         const Ble = window.Capacitor.Plugins.BluetoothLe;
         try {
             await Ble.initialize();
             await Ble.requestLEScan();
+
             Ble.addListener('onScanResult', (res) => {
                 const name = res.device.name || "Bilinmeyen Cihaz";
-                addDeviceToList(name, res.rssi);
+                if (!DISCOVERED_DEVICES.find(d => d.deviceId === res.device.deviceId)) {
+                    DISCOVERED_DEVICES.push(res.device);
+                    addDeviceToDmList(name, res.rssi, res.device.deviceId);
+                }
             });
+
             setTimeout(async () => {
                 await Ble.stopLEScan();
-                if (deviceList.innerHTML.includes(t.bt_searching)) {
-                    deviceList.innerHTML = `<div style="padding: 20px; opacity: 0.6;">${CURRENT_LANG === 'tr' ? 'Cihaz bulunamadı.' : 'No devices found.'}</div>`;
+                if (DISCOVERED_DEVICES.length === 0) {
+                    dmList.innerHTML = '<div class="empty-state">Yakında cihaz bulunamadı.</div>';
                 }
-            }, 7000);
-        } catch (e) { simulateBluetoothScan(); }
-    } else { simulateBluetoothScan(); }
-});
-
-// Close modal when clicking outside
-discoveryModal.addEventListener('click', (e) => {
-    if (e.target === discoveryModal) {
-        discoveryModal.style.display = 'none';
-        if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
-            window.Capacitor.Plugins.BluetoothLe.stopLEScan().catch(() => { });
-        }
+            }, 10000);
+        } catch (e) { console.error("BT Tarama Hatası:", e); }
+    } else {
+        // Tarayıcı Test Modu
+        setTimeout(() => {
+            addDeviceToDmList("iPhone 11 (Ahmet)", -40, "DE:AD:BE:EF:01");
+            addDeviceToDmList("Galaxy S21 (Suriye-BT)", -55, "CA:FE:BA:BE:02");
+        }, 1500);
     }
-});
+}
 
-closeModalBtn.addEventListener('click', () => {
-    discoveryModal.style.display = 'none';
-    if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
-        window.Capacitor.Plugins.BluetoothLe.stopLEScan().catch(() => { });
-    }
-});
+function addDeviceToDmList(name, rssi, deviceId) {
+    if (dmList.querySelector('.empty-state')) dmList.innerHTML = '';
 
-function addDeviceToList(name, rssi) {
-    if (deviceList.innerHTML.includes(translations[CURRENT_LANG].bt_searching)) deviceList.innerHTML = '';
     const item = document.createElement('div');
-    item.className = 'device-item';
-    item.innerHTML = `<span>📶 ${name}</span> <span style="font-size: 0.7rem; opacity: 0.4;">${rssi}dBm</span>`;
-    item.onclick = () => alert(translations[CURRENT_LANG].bt_alert);
-    deviceList.appendChild(item);
+    item.className = 'dm-item';
+    item.innerHTML = `
+        <div class="dm-avatar">${name.charAt(0)}</div>
+        <div class="dm-info">
+            <div class="dm-name">${name}</div>
+            <div class="dm-status">Sinyal: ${rssi}dBm • P2P Hazır</div>
+        </div>
+    `;
+    item.onclick = () => sendConnectionRequest(name, deviceId);
+    dmList.appendChild(item);
 }
 
-function simulateBluetoothScan() {
-    const t = translations[CURRENT_LANG];
-    setTimeout(() => {
-        deviceList.innerHTML = '';
-        addDeviceToList("BitChat-iPhone-11", -45);
-        addDeviceToList("SYP2P-Server", -52);
-        addDeviceToList("Bilinmeyen Cihaz-1", -88);
-        btStatus.innerText = "Cihazlar listeleniyor...";
-    }, 2000);
-}
-
-// Device & Header Adaptation
-function detectDevice() {
-    const ua = navigator.userAgent;
-    const deviceInfo = document.getElementById('device-info');
-    let model = "Mobil Cihaz";
-
-    if (/iPhone/i.test(ua)) {
-        model = "Apple iPhone";
-        if (screen.height >= 812) model = "iPhone Premium (X/11/12+)"; // Notch devices
-    } else if (/Android/i.test(ua)) {
-        model = "Android Cihaz";
-    }
-
-    deviceInfo.innerText = "BitChat P2P • " + model;
-
-    // Add class for specific styling
-    if (model.includes("Premium")) {
-        document.body.classList.add('notch-device');
+// 2. Bağlantı İstek Akışı
+function sendConnectionRequest(name, deviceId) {
+    // Gerçekte burada bir GATT write ile karşıya "CONN_REQ" paketi atılır
+    // Simülasyon: Karşı tarafın isteği kabul ettiğini varsayalım
+    const status = confirm(`${name} cihazına bağlantı isteği gönderilsin mi?`);
+    if (status) {
+        CURRENT_CHAT_DEVICE = { name, deviceId };
+        openChat(name);
     }
 }
 
-// Bluetooth & Permission Logic
-async function requestAllPermissions() {
-    if (window.Capacitor) {
-        try {
-            // Media Permissions
-            await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).catch(err => console.warn("Media missing:", err));
-
-            // Bluetooth Permissions for Android 12+
-            if (window.Capacitor.Plugins.BluetoothLe) {
-                const Ble = window.Capacitor.Plugins.BluetoothLe;
-                await Ble.initialize();
-                await Ble.requestPermissions();
-            }
-        } catch (e) { console.warn("Permissions initialization error:", e); }
-    }
+function openChat(name) {
+    chatWithName.innerText = name;
+    dmView.classList.remove('view-active');
+    dmView.classList.add('view-hidden');
+    chatView.classList.remove('view-hidden');
+    chatView.classList.add('view-active');
+    messageInput.disabled = false;
+    sendBtn.disabled = false;
 }
 
-// Auto-Login and focus fixes
-document.addEventListener('DOMContentLoaded', () => {
-    detectDevice();
-    requestAllPermissions();
-    const savedName = localStorage.getItem('bitcep_username');
-    if (savedName) {
-        MY_USERNAME = savedName;
-        usernameInput.value = savedName;
-        loginOverlay.style.display = 'none';
-        connect();
+backToDmBtn.onclick = () => {
+    chatView.classList.remove('view-active');
+    chatView.classList.add('view-hidden');
+    dmView.classList.remove('view-hidden');
+    dmView.classList.add('view-active');
+};
+
+// 3. Mesajlaşma Mantığı (Bluetooth GATT üzerinden veri paketi)
+async function sendBTMessage(data) {
+    if (!window.Capacitor) {
+        // Browser simülasyonu
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        appendMessage(MY_USERNAME, data.text || "Dosya gönderildi", time, true, data.type);
+        return;
     }
-});
 
-loginBtn.addEventListener('click', () => {
-    const name = usernameInput.value.trim();
-    if (name) {
-        MY_USERNAME = name;
-        localStorage.setItem('bitcep_username', name);
-        loginOverlay.style.display = 'none';
-        connect();
-        // Force focus on next tick
-        setTimeout(() => { messageInput.disabled = false; messageInput.focus(); }, 100);
+    // Gerçek Bluetooth Gönderimi
+    const Ble = window.Capacitor.Plugins.BluetoothLe;
+    try {
+        const encoder = new TextEncoder();
+        const value = encoder.encode(JSON.stringify(data));
+        // GATT Write
+        await Ble.write({
+            deviceId: CURRENT_CHAT_DEVICE.deviceId,
+            service: SERVICE_UUID,
+            characteristic: CHARACTERISTIC_UUID,
+            value: btoa(String.fromCharCode(...value))
+        });
+
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        appendMessage(MY_USERNAME, data.text || "Dosya", time, true, data.type);
+    } catch (e) {
+        alert("Mesaj gönderilemedi: Bluetooth bağlantısı koptu.");
     }
-});
-
-messageInput.addEventListener('click', () => {
-    if (messageInput.disabled) return;
-    messageInput.focus();
-});
-
-// WebSocket and Chat Logic
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const wsUrl = `${protocol}//${window.location.host}`;
-let socket;
-
-function connect() {
-    socket = new WebSocket(wsUrl);
-    socket.onopen = () => {
-        messageInput.disabled = false;
-        sendBtn.disabled = false;
-    };
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        const isMe = data.sender === MY_USERNAME;
-        appendMessage(data.sender, data.text || data.data, data.time, isMe, data.type);
-    };
 }
 
 function appendMessage(sender, content, time, isMe, type = 'chat') {
     const msgElement = document.createElement('div');
-    msgElement.classList.add('message');
-    msgElement.classList.add(isMe ? 'sent' : 'received');
+    msgElement.className = `message ${isMe ? 'sent' : 'received'}`;
 
-    let contentHTML = (type === 'image') ? `<img src="${content}" class="msg-img">` : (type === 'audio' ? `<audio controls class="msg-audio"><source src="${content}"></audio>` : `<div class="msg-bubble">${content}</div>`);
+    let contentHTML = content;
+    if (type === 'image') contentHTML = `<img src="${content}" class="msg-img">`;
+    if (type === 'audio') contentHTML = `<audio controls class="msg-audio"><source src="${content}"></audio>`;
 
     msgElement.innerHTML = `
         <div style="display: flex; gap: 8px; align-items: flex-end; ${isMe ? 'flex-direction: row-reverse;' : ''}">
             <div style="display: flex; flex-direction: column;">
-                ${type !== 'chat' ? `<div class="msg-bubble">${contentHTML}</div>` : contentHTML}
+                <div class="msg-bubble">${contentHTML}</div>
                 <div class="msg-meta">${isMe ? '' : sender + ' • '}${time}</div>
             </div>
         </div>
@@ -266,30 +161,29 @@ function appendMessage(sender, content, time, isMe, type = 'chat') {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-function sendMessage() {
+// 4. Input ve Medya İşlemleri
+function handleSendMessage() {
     const text = messageInput.value.trim();
-    if (text && socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ sender: MY_USERNAME, type: 'chat', text: text }));
+    if (text) {
+        sendBTMessage({ sender: MY_USERNAME, type: 'chat', text: text });
         messageInput.value = '';
-        messageInput.focus(); // Keep keyboard open
+        messageInput.focus();
     }
 }
 
-sendBtn.addEventListener('click', sendMessage);
-messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+sendBtn.onclick = handleSendMessage;
+messageInput.onkeypress = (e) => { if (e.key === 'Enter') handleSendMessage(); };
 
-attachBtn.addEventListener('click', () => photoInput.click());
-photoInput.addEventListener('change', async (e) => {
+attachPlusBtn.onclick = () => photoInput.click();
+photoInput.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-        socket.send(JSON.stringify({ sender: MY_USERNAME, type: 'image', data: ev.target.result }));
-    };
+    reader.onload = (ev) => sendBTMessage({ sender: MY_USERNAME, type: 'image', text: ev.target.result });
     reader.readAsDataURL(file);
-});
+};
 
-micBtn.addEventListener('click', async () => {
+micBtn.onclick = async () => {
     if (!mediaRecorder || mediaRecorder.state === 'inactive') {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
@@ -298,9 +192,8 @@ micBtn.addEventListener('click', async () => {
         mediaRecorder.onstop = () => {
             const blob = new Blob(audioChunks, { type: 'audio/webm' });
             const reader = new FileReader();
-            reader.onloadend = () => socket.send(JSON.stringify({ sender: MY_USERNAME, type: 'audio', data: reader.result }));
+            reader.onloadend = () => sendBTMessage({ sender: MY_USERNAME, type: 'audio', text: reader.result });
             reader.readAsDataURL(blob);
-            stream.getTracks().forEach(t => t.stop());
         };
         mediaRecorder.start();
         micBtn.classList.add('active');
@@ -310,6 +203,26 @@ micBtn.addEventListener('click', async () => {
         micBtn.classList.remove('active');
         recorderStatus.classList.add('recorder-hidden');
     }
+};
+
+// 5. Başlangıç ve Giriş
+document.addEventListener('DOMContentLoaded', () => {
+    const savedName = localStorage.getItem('bitcep_username');
+    if (savedName) {
+        MY_USERNAME = savedName;
+        loginOverlay.style.display = 'none';
+        startDiscovery();
+    }
 });
 
-changeLanguage('tr');
+loginBtn.onclick = () => {
+    const name = usernameInput.value.trim();
+    if (name) {
+        MY_USERNAME = name;
+        localStorage.setItem('bitcep_username', name);
+        loginOverlay.style.display = 'none';
+        startDiscovery();
+    }
+};
+
+btRefreshBtn.onclick = startDiscovery;
