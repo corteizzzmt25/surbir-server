@@ -140,6 +140,8 @@ function updateEmptyState() {
     }
 }
 
+let IS_BT_INITIALIZED = false;
+
 // 1b. Bluetooth Durum Kontrolü
 async function checkBTStatus() {
     const statusBar = document.getElementById('bt-status-bar');
@@ -147,6 +149,10 @@ async function checkBTStatus() {
     if (!statusBar) return;
 
     if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
+        if (!IS_BT_INITIALIZED) {
+            // iOS'ta initialize olmadan API çağrısı crash ettirebilir
+            return;
+        }
         try {
             const Ble = window.Capacitor.Plugins.BluetoothLe;
             const isEnabled = await Ble.isEnabled();
@@ -166,7 +172,7 @@ async function checkBTStatus() {
     } else {
         // Plugin Yüklü Değil Veya Çalışmıyor
         statusBar.className = 'status-disabled';
-        statusText.innerText = '� Kritik Hata: BT Eklentisi Eksik';
+        statusText.innerText = '🔴 Kritik Hata: BT Eklentisi Eksik';
     }
 }
 
@@ -180,23 +186,25 @@ async function startDiscovery() {
     if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
         const Ble = window.Capacitor.Plugins.BluetoothLe;
         try {
-            try {
-                await Ble.initialize();
-            } catch (e) { console.log("BT Zaten başlatıldı (Normal)", e); }
-
-            // İOS'TAKİ ÇÖKME SEBEBİ BURASIYDI:
-            // iOS arka planda zaten izinleri initialize'da sorar. requestPermissions'ı üst üste çağırmak sistemi çökertiyor. 
+            // Android'e Özel Ekstra İzin/Enable Adımları
+            // iOS arka planda zaten izinleri initialize'da sorar. requestPermissions'ı üst üste çağırmak sistemi çökertiyor.
             // Aynı şekilde Ble.enable() iOS'u doğrudan crash ettirir!
             if (window.Capacitor.getPlatform() === 'android') {
                 try { await Ble.requestPermissions(); } catch (e) { }
                 try { await Ble.enable(); } catch (e) { }
             }
 
-            // Mevcut taramaları durdur
-            try { await Ble.stopLEScan(); } catch (e) { }
+            // GÜVENLİ INITIALIZE
+            try {
+                await Ble.initialize({});
+                IS_BT_INITIALIZED = true;
+            } catch (e) { console.log("BT Zaten başlatıldı (Normal)", e); IS_BT_INITIALIZED = true; }
 
-            // Taramayı Başlat
+            // GÜVENLİ OLMADAN stopLEScan YAPMA, iOS ÇÖKER! (Kaldırıldı)
+
+            // Taramayı Başlat (Tüm özellikleri kapsayacak şekilde güvenli array ile)
             await Ble.requestLEScan({
+                services: [], // CRUCIAL BUG FIX: iOS Swift "services" array olmadığı için çöküyordu!
                 allowDuplicates: false
                 // scanMode parametresi sadece Android'e özeldir, iOS'u çökertmemek için kaldırıldı
             });
@@ -213,6 +221,9 @@ async function startDiscovery() {
                     if (emptyState) emptyState.remove();
                 }
             });
+
+            checkBTStatus(); // Initialize sonrası 1 kez kontrol et
+
 
             // Tarama süresi (15 Saniye limit)
             setTimeout(async () => {
