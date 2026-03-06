@@ -51,6 +51,60 @@ header h1 {
     color: var(--black);
 }
 
+/* Language Dropdown in Header */
+.lang-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+#lang-options,
+#chat-lang-options {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 10px;
+    background: white;
+    border-radius: 18px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+    width: 140px;
+    overflow: hidden;
+    z-index: 1000;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.lang-options-hidden {
+    opacity: 0;
+    transform: translateY(-10px);
+    pointer-events: none;
+}
+
+#lang-options button,
+#chat-lang-options button {
+    width: 100%;
+    padding: 12px 15px;
+    border: none;
+    background: white;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#lang-options button:hover,
+#chat-lang-options button:hover {
+    background: #f1f5f9;
+}
+
+#lang-options button:active,
+#chat-lang-options button:active {
+    background: #e2e8f0;
+}
+
 /* Language Switcher in Header */
 .lang-icon-btn {
     background: rgba(255, 255, 255, 0.4);
@@ -110,9 +164,61 @@ header h1 {
     background: linear-gradient(135deg, #007a33, #0f172a, #CE1126);
     z-index: 3000;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
 }
+
+#bt-status-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: white;
+    z-index: 3001;
+    transition: background 0.3s;
+}
+
+.status-enabled {
+    background: rgba(0, 122, 51, 0.9);
+}
+
+.status-disabled {
+    background: rgba(206, 17, 38, 0.9);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: white;
+    animation: beacon 1.5s infinite;
+}
+
+@keyframes beacon {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.5);
+        opacity: 0.5;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
 
 .login-card {
     width: 85%;
@@ -340,7 +446,7 @@ header h1 {
 
 .modal-btn.primary {
     background: var(--green);
-    color: #white;
+    color: white;
 }
 
 /* Loading Overlay */

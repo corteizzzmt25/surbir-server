@@ -78,25 +78,55 @@ window.changeLanguage = (lang) => {
     CURRENT_LANG = lang;
     localStorage.setItem('surbit_lang', lang);
     applyTranslations();
+    // Dil menülerini kapat
+    document.getElementById('lang-options').classList.add('lang-options-hidden');
+    document.getElementById('chat-lang-options').classList.add('lang-options-hidden');
 };
 
 function applyTranslations() {
     const t = translations[CURRENT_LANG];
-    document.getElementById('lang-welcome').innerText = t.welcome;
-    document.getElementById('lang-instruction').innerText = t.instruction;
-    document.getElementById('login-btn').innerText = t.login_btn;
-    document.getElementById('lang-active-title').innerText = t.active_title;
-    document.getElementById('lang-scanning').innerText = t.scanning;
-    document.getElementById('lang-request-title').innerText = t.request_title;
-    document.getElementById('accept-btn').innerText = t.accept;
-    document.getElementById('refuse-btn').innerText = t.refuse;
-    document.getElementById('message-input').placeholder = t.placeholder;
-    document.getElementById('lang-p2p-status').innerText = t.p2p_status;
-    document.getElementById('lang-encryption').innerText = t.encryption;
-
+    const get = (id) => document.getElementById(id);
+    if (get('lang-welcome')) get('lang-welcome').innerText = t.welcome;
+    if (get('lang-instruction')) get('lang-instruction').innerText = t.instruction;
+    if (get('login-btn')) get('login-btn').innerText = t.login_btn;
+    if (get('lang-active-title')) get('lang-active-title').innerText = t.active_title;
+    if (get('lang-scanning')) get('lang-scanning').innerText = t.scanning;
+    if (get('lang-request-title')) get('lang-request-title').innerText = t.request_title;
+    if (get('accept-btn')) get('accept-btn').innerText = t.accept;
+    if (get('refuse-btn')) get('refuse-btn').innerText = t.refuse;
+    if (get('message-input')) get('message-input').placeholder = t.placeholder;
+    if (get('lang-p2p-status')) get('lang-p2p-status').innerText = t.p2p_status;
+    if (get('lang-encryption')) get('lang-encryption').innerText = t.encryption;
+    // Aktif dil butonunu işaretle
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
     const activeBtn = document.getElementById(`lang-${CURRENT_LANG}`);
     if (activeBtn) activeBtn.classList.add('active');
+}
+
+// 1b. Bluetooth Durum Kontrolü
+function checkBTStatus() {
+    const statusBar = document.getElementById('bt-status-bar');
+    const statusText = document.getElementById('bt-status-text');
+    if (!statusBar) return;
+
+    if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
+        window.Capacitor.Plugins.BluetoothLe.isEnabled().then(result => {
+            if (result.value) {
+                statusBar.className = 'status-enabled';
+                statusText.innerText = '✅ Bluetooth Aktif ve Hazır';
+            } else {
+                statusBar.className = 'status-disabled';
+                statusText.innerText = '🔴 Bluetooth Kapalı - Lütfen Açın';
+            }
+        }).catch(() => {
+            statusBar.className = 'status-disabled';
+            statusText.innerText = '⚠️ Bluetooth Durumu Bilinmiyor';
+        });
+    } else {
+        // Tarayıcıda test modunda
+        statusBar.className = 'status-enabled';
+        statusText.innerText = '🖥️ Tarayıcı Test Modu';
+    }
 }
 
 // 2. Discovery
@@ -109,21 +139,44 @@ async function startDiscovery() {
     if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
         const Ble = window.Capacitor.Plugins.BluetoothLe;
         try {
-            await Ble.initialize();
-            // Permissions request for better real device discovery
+            // Android 12+ ve iOS için Zorunlu İzinler
+            try {
+                await Ble.initialize();
+            } catch (e) { console.log("BT already initialized"); }
+
+            // Konum ve Bluetooth İzinlerini Zorla İste
             await Ble.requestPermissions();
 
-            await Ble.requestLEScan();
+            // Mevcut taramaları durdur ve temizle
+            try { await Ble.stopLEScan(); } catch (e) { }
+
+            // Taramayı Başlat
+            await Ble.requestLEScan({
+                allowDuplicates: false,
+                scanMode: 2 // Low Latency / Aggressive Scan
+            });
+
             Ble.addListener('onScanResult', (res) => {
-                const name = res.device.name || "Bilinmeyen Cihaz";
+                const name = res.device.name || "P2P Device";
                 if (!DISCOVERED_DEVICES.find(d => d.deviceId === res.device.deviceId)) {
                     DISCOVERED_DEVICES.push(res.device);
                     addDeviceToDmList(name, res.rssi, res.device.deviceId);
                 }
             });
-            setTimeout(() => Ble.stopLEScan(), 15000); // 15s scan
-        } catch (e) { console.error("BT Error", e); }
+
+            // Tarama sürelerini uzat (iPhone 11/6s uyumu için)
+            setTimeout(async () => {
+                await Ble.stopLEScan();
+                if (DISCOVERED_DEVICES.length === 0) {
+                    dmList.innerHTML = `<div class="empty-state">Gerçek cihaz bulunamadı. Lütfen karşı cihazın görünür olduğundan emin olun.</div>`;
+                }
+            }, 15000);
+        } catch (e) {
+            console.error("BT Scan Error", e);
+            dmList.innerHTML = `<div class="empty-state">Bağlantı Hatası: Bluetooth veya Konum İzni Gerekli.</div>`;
+        }
     } else {
+        // Browser Test
         dmList.innerHTML = `<div class="empty-state">${t.no_device}</div>`;
     }
 }
@@ -205,37 +258,53 @@ sendBtn.onclick = handleSend;
 messageInput.onkeypress = (e) => { if (e.key === 'Enter') handleSend(); };
 
 // 5. App Start and Transitions
-function cycleLanguage() {
-    const langs = ['tr', 'ar', 'en'];
-    let idx = langs.indexOf(CURRENT_LANG);
-    idx = (idx + 1) % langs.length;
-    changeLanguage(langs[idx]);
+const langOptions = document.getElementById('lang-options');
+const chatLangOptions = document.getElementById('chat-lang-options');
+
+function toggleLangMenu(menu) {
+    menu.classList.toggle('lang-options-hidden');
 }
 
-document.getElementById('lang-cycle-btn').onclick = cycleLanguage;
-document.getElementById('chat-lang-cycle-btn').onclick = cycleLanguage;
+document.getElementById('lang-menu-btn').onclick = (e) => {
+    e.stopPropagation();
+    toggleLangMenu(langOptions);
+};
+
+document.getElementById('chat-lang-menu-btn').onclick = (e) => {
+    e.stopPropagation();
+    toggleLangMenu(chatLangOptions);
+};
+
+// Menü dışına tıklandığında kapat
+window.onclick = () => {
+    langOptions.classList.add('lang-options-hidden');
+    chatLangOptions.classList.add('lang-options-hidden');
+};
 
 loginBtn.onclick = () => {
     const name = usernameInput.value.trim();
-    if (name) {
-        MY_USERNAME = name;
-        localStorage.setItem('bitcep_username', name);
+    if (!name) return;
 
-        // Show Loading (Premium Transition)
-        loadingOverlay.classList.remove('loader-hidden');
+    MY_USERNAME = name;
+    localStorage.setItem('bitcep_username', name);
 
-        setTimeout(() => {
-            loadingOverlay.classList.add('loader-hidden');
-            loginOverlay.style.display = 'none';
-            startDiscovery();
-        }, 1500); // 1.5s loading
-    }
+    // Show Loading (Premium Transition)
+    loadingOverlay.classList.remove('loader-hidden');
+
+    setTimeout(() => {
+        loadingOverlay.classList.add('loader-hidden');
+        loginOverlay.style.display = 'none';
+        startDiscovery();
+    }, 1500);
 };
 
 btRefreshBtn.onclick = startDiscovery;
 
 document.addEventListener('DOMContentLoaded', () => {
     applyTranslations();
+    checkBTStatus(); // Bluetooth durumunu kontrol et
+    setInterval(checkBTStatus, 5000); // Her 5 saniyede bir guncelle
+
     const saved = localStorage.getItem('bitcep_username');
     if (saved) {
         MY_USERNAME = saved;
