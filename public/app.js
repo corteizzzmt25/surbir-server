@@ -27,6 +27,13 @@ let CHAT_HISTORIES = {};
 let CURRENT_SCAN_STATE = 'idle';
 let LAST_ERROR = '';
 
+// Crash Loop Guard: Eğer uygulama tarama yaparken çökmüşse son otomasyonu sil
+if (localStorage.getItem('bt_crash_guard')) {
+    localStorage.removeItem('bt_crash_guard');
+    localStorage.removeItem('bitcep_username');
+    console.warn("Uygulama çöktüğü için güvenlik amaçlı kullanıcı adı sıfırlandı.");
+}
+
 const translations = {
     tr: {
         welcome: "Surbit 🇸🇾",
@@ -183,30 +190,47 @@ async function startDiscovery() {
     updateEmptyState();
     DISCOVERED_DEVICES = [];
 
+    // Taramaya geçerken çökmeye karşı guard ekliyoruz. Survived ise birazdan sileceğiz.
+    localStorage.setItem('bt_crash_guard', '1');
+
     if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
         const Ble = window.Capacitor.Plugins.BluetoothLe;
         try {
-            // Android'e Özel Ekstra İzin/Enable Adımları
-            // iOS arka planda zaten izinleri initialize'da sorar. requestPermissions'ı üst üste çağırmak sistemi çökertiyor.
-            // Aynı şekilde Ble.enable() iOS'u doğrudan crash ettirir!
+            // Sadece Android için yetkiler ve enable prompt'u
             if (window.Capacitor.getPlatform() === 'android') {
                 try { await Ble.requestPermissions(); } catch (e) { }
                 try { await Ble.enable(); } catch (e) { }
             }
 
-            // GÜVENLİ INITIALIZE
+            // GÜVENLİ INITIALIZE (Bu adım iOS'ta Yetki Pop-Up'ını çıkartır)
             try {
-                await Ble.initialize({});
+                await Ble.initialize();
                 IS_BT_INITIALIZED = true;
-            } catch (e) { console.log("BT Zaten başlatıldı (Normal)", e); IS_BT_INITIALIZED = true; }
+            } catch (e) { console.log("BT Init Hatası:", e); IS_BT_INITIALIZED = true; }
 
-            // GÜVENLİ OLMADAN stopLEScan YAPMA, iOS ÇÖKER! (Kaldırıldı)
+            // İOS CRASH ENGELLEYİCİ - CRITICAL FIX
+            // iPhone'da "İzin Ver" tuşuna basana kadar state .poweredOn olmaz. O esnada scan başlarsa sistem Crash verir! (API Misuse)
+            // Bu sebeple cihaz TAMAMEN hazır (isEnabled === true) olana kadar bir döngüyle bekliyoruz!
+            let isReady = false;
+            for (let i = 0; i < 20; i++) {
+                const check = await Ble.isEnabled();
+                if (check && check.value === true) {
+                    isReady = true;
+                    break;
+                }
+                await new Promise(r => setTimeout(r, 1000)); // 1 saniye bekle (Kullanıcının Pop-Up'ı onaylamasını bekliyor)
+            }
 
-            // Taramayı Başlat (Tüm özellikleri kapsayacak şekilde güvenli array ile)
+            if (!isReady) {
+                throw new Error("Kullanıcı BT izni vermedi veya Motor Açılamadı.");
+            }
+
+            // Çökmeyi başarıyla geçtik, guard'ı kaldır.
+            localStorage.removeItem('bt_crash_guard');
+
+            // Taramayı Başlat (services dizisini TAMAMEN KESTİM, boş dizi yollamak da iOS'ta çökertiyor)
             await Ble.requestLEScan({
-                services: [], // CRUCIAL BUG FIX: iOS Swift "services" array olmadığı için çöküyordu!
                 allowDuplicates: false
-                // scanMode parametresi sadece Android'e özeldir, iOS'u çökertmemek için kaldırıldı
             });
 
             Ble.addListener('onScanResult', (res) => {
@@ -222,8 +246,7 @@ async function startDiscovery() {
                 }
             });
 
-            checkBTStatus(); // Initialize sonrası 1 kez kontrol et
-
+            checkBTStatus(); // Son bir durum güncellemesi
 
             // Tarama süresi (15 Saniye limit)
             setTimeout(async () => {
@@ -234,12 +257,14 @@ async function startDiscovery() {
                 }
             }, 15000);
         } catch (e) {
+            localStorage.removeItem('bt_crash_guard');
             console.error("P2P Tarama Hatası", e);
             CURRENT_SCAN_STATE = 'error';
-            LAST_ERROR = (e.message || 'Bilinmeyen Hata') + " (Telefon ayarlarından Bluetooth ve Konum'a izin verin)";
+            LAST_ERROR = (e.message || 'Bilinmeyen Hata') + " (Telefon ayarlarından Bluetooth yetkisi gereklidir)";
             updateEmptyState();
         }
     } else {
+        localStorage.removeItem('bt_crash_guard');
         CURRENT_SCAN_STATE = 'error';
         LAST_ERROR = "Sistem Hatası: P2P Motoru (Bluetooth) derlenirken eklenmemiş. Lütfen 'npm i @capacitor-community/bluetooth-le' yapın.";
         updateEmptyState();
