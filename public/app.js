@@ -104,28 +104,32 @@ function applyTranslations() {
 }
 
 // 1b. Bluetooth Durum Kontrolü
-function checkBTStatus() {
+async function checkBTStatus() {
     const statusBar = document.getElementById('bt-status-bar');
     const statusText = document.getElementById('bt-status-text');
     if (!statusBar) return;
 
     if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
-        window.Capacitor.Plugins.BluetoothLe.isEnabled().then(result => {
-            if (result.value) {
+        try {
+            const Ble = window.Capacitor.Plugins.BluetoothLe;
+            const isEnabled = await Ble.isEnabled();
+
+            if (isEnabled.value) {
                 statusBar.className = 'status-enabled';
                 statusText.innerText = '✅ Bluetooth Aktif ve Hazır';
             } else {
                 statusBar.className = 'status-disabled';
                 statusText.innerText = '🔴 Bluetooth Kapalı - Lütfen Açın';
             }
-        }).catch(() => {
+        } catch (e) {
+            console.error("BT Status check failed", e);
             statusBar.className = 'status-disabled';
-            statusText.innerText = '⚠️ Bluetooth Durumu Bilinmiyor';
-        });
+            statusText.innerText = '⚠️ Bluetooth Durumu Alınamadı';
+        }
     } else {
         // Tarayıcıda test modunda
         statusBar.className = 'status-enabled';
-        statusText.innerText = '🖥️ Tarayıcı Test Modu';
+        statusText.innerText = '🖥️ Tarayıcı Test Modu: P2P Aktif';
     }
 }
 
@@ -144,44 +148,55 @@ async function startDiscovery() {
                 await Ble.initialize();
             } catch (e) { console.log("BT already initialized"); }
 
-            // Konum ve Bluetooth İzinlerini Zorla İste
-            await Ble.requestPermissions();
+            // 1. Önce İzinleri İste (Hem Android Hem iOS için Hayati)
+            try {
+                await Ble.requestPermissions();
+            } catch (e) { console.log('Permission request skipped/failed', e); }
 
-            // Mevcut taramaları durdur ve temizle
+            // 2. Android 12+ için Bluetooth'u Açmasını İste (Prompt)
+            try { await Ble.enable(); } catch (e) { }
+
+            // 3. Mevcut işlemleri durdur
             try { await Ble.stopLEScan(); } catch (e) { }
 
-            // Taramayı Başlat
+            // Taramayı Başlat (Tüm özellikleri kapsayacak şekilde)
             await Ble.requestLEScan({
                 allowDuplicates: false,
-                scanMode: 2 // Low Latency / Aggressive Scan
+                scanMode: 2 // Low Latency (Agresif Tarama Pili Daha Çok Harcar Ama Çabuk Bulur)
             });
 
             Ble.addListener('onScanResult', (res) => {
-                const name = res.device.name || res.device.localName || ("Bilinmeyen (ID: " + res.device.deviceId.substring(0, 8) + ")");
+                const name = res.device.name || res.device.localName || ("Cihaz_" + res.device.deviceId.substring(0, 6));
+
+                // Aynı cihazı tekrar listeye ekleme
                 if (!DISCOVERED_DEVICES.find(d => d.deviceId === res.device.deviceId)) {
                     DISCOVERED_DEVICES.push(res.device);
                     addDeviceToDmList(name, res.rssi, res.device.deviceId);
+
+                    // Cihaz bulursak boş durumu hemen kaldır
+                    const emptyState = dmList.querySelector('.empty-state');
+                    if (emptyState) emptyState.remove();
                 }
             });
 
-            // Tarama sürelerini uzat (iPhone 11/6s uyumu için)
+            // Tarama süresi: 15 saniye sürsün
             setTimeout(async () => {
                 await Ble.stopLEScan();
                 if (DISCOVERED_DEVICES.length === 0) {
                     dmList.innerHTML = `<div class="empty-state">
-                        <b>Gerçek cihaz bulunamadı.</b><br><br>
-                        P2P testleri için lütfen her iki cihazda da <b>Ayarlar > Bluetooth</b> menüsünü AÇIK ve EKRANDA tutun. (iPhone'lar ancak bu menü açıkken kendini dışarıya yayınlar). 
-                        Bluetooth'u kapatıp açarak tekrar deneyin.
+                        <b>Gerçek P2P Cihazı Bulunamadı.</b><br><br>
+                        Diğer cihazın Bluetooth ayarlarına girmesini ve <b>uygulamanın açık kalmasını</b> isteyin. İki iPhone'un birbirini görmesi için "Ayarlar > Bluetooth" ekranında olmaları gerekir.
                     </div>`;
                 }
             }, 15000);
         } catch (e) {
             console.error("BT Scan Error", e);
             dmList.innerHTML = `<div class="empty-state">
-                <b>Bağlantı Hatası:</b> Bluetooth veya Konum İzni Gerekli. <br><br>
-                (${e.message || 'Bilinmeyen Hata'})
+                <b>Tarama Hatası P2P:</b> Bluetooth erişimine veya Konum iznine izin vermediniz.<br>
+                Hata Detayı: ${e.message}
             </div>`;
         }
+
 
     } else {
         // Browser Test
