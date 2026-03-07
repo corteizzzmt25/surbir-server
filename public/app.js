@@ -1,492 +1,556 @@
-// Elements
-const dmView = document.getElementById('dm-view');
-const chatView = document.getElementById('chat-view');
-const dmList = document.getElementById('dm-list');
-const messagesDiv = document.getElementById('messages');
-const messageInput = document.getElementById('message-input');
-const sendBtn = document.getElementById('send-btn');
-const btRefreshBtn = document.getElementById('bt-refresh');
-const backToDmBtn = document.getElementById('back-to-dm');
-const chatWithName = document.getElementById('chat-with-name');
+// ===================================================================
+//  SURBIT P2P - QR KOD TÜNEL SİSTEMİ
+//  Bluetooth yok. İnternet yok. Sadece WebRTC + QR Kod.
+//  İki cihaz birbirinin QR'ını okuyarak P2P tünel kurar.
+// ===================================================================
 
-const loginOverlay = document.getElementById('login-overlay');
-const loadingOverlay = document.getElementById('loading-overlay');
-const usernameInput = document.getElementById('username-input');
-const loginBtn = document.getElementById('login-btn');
-
-const requestModal = document.getElementById('request-modal');
-const acceptBtn = document.getElementById('accept-btn');
-const refuseBtn = document.getElementById('refuse-btn');
-
-// State
-let MY_USERNAME = "";
+// ============ DURUM DEĞİŞKENLERİ ============
+let MY_USERNAME = '';
 let CURRENT_LANG = localStorage.getItem('surbit_lang') || 'tr';
-let CURRENT_CHAT_DEVICE = null;
-let DISCOVERED_DEVICES = [];
+let CURRENT_CHAT_PEER = null;   // { name, conn }
 let CHAT_HISTORIES = {};
-let CURRENT_SCAN_STATE = 'idle';
-let LAST_ERROR = '';
-let scanListener = null; // To prevent adding multiple listeners and crashing
+let peerConnection = null;      // RTCPeerConnection
+let dataChannel = null;         // RTCDataChannel
+let localStream = null;         // camera stream (scanner için)
+let scanInterval = null;        // QR scan interval
 
-// --- 🔴 GELİŞMİŞ EKRAN HATA AYIKLAYICI (DEBUGGER) ---
-// iPhone 6S veya diğer cihazlarda nerede tıkandığını tam görebilmek için:
-const debugLog = (msg, isError) => {
-    console.log("DEBUG:", msg);
-    let devPanel = document.getElementById('dev-debug-panel');
-    if (!devPanel) {
-        devPanel = document.createElement('div');
-        devPanel.id = 'dev-debug-panel';
-        devPanel.style.cssText = 'position:fixed; bottom:0; left:0; width:100%; max-height:150px; background:rgba(0,0,0,0.85); color:#0f0; font-family:monospace; font-size:11px; overflow-y:auto; z-index:9999; padding:10px; pointer-events:none; border-top:2px solid #0f0;';
-        document.body.appendChild(devPanel);
-    }
-    const line = document.createElement('div');
-    line.style.color = isError ? '#ff4444' : '#00ff00';
-    line.innerText = `[${new Date().toLocaleTimeString()}] ${typeof msg === 'object' ? JSON.stringify(msg) : msg}`;
-    devPanel.appendChild(line);
-    devPanel.scrollTop = devPanel.scrollHeight;
-};
-// ----------------------------------------------------
-
-// Crash Loop Guard: Eğer uygulama tarama yaparken çökmüşse son otomasyonu sil
-if (localStorage.getItem('bt_crash_guard')) {
-    localStorage.removeItem('bt_crash_guard');
-    localStorage.removeItem('bitcep_username');
-    console.warn("Uygulama çöktüğü için güvenlik amaçlı kullanıcı adı sıfırlandı.");
-}
-
-const translations = {
+// ============ ÇEVİRİLER ============
+const T = {
     tr: {
-        welcome: "Surbit 🇸🇾",
-        instruction: "Lütfen bir rumuz girerek başlayın.",
-        login_btn: "Bağlan",
-        active_title: "Aktif P2P Cihazları",
-        scanning: "Cihazlar taranıyor... 🔍",
-        no_device: "Gerçek cihaz bulunamadı.",
-        no_device_desc: "P2P testleri için lütfen her iki cihazda da <b>Ayarlar > Bluetooth</b> menüsünü AÇIK ve EKRANDA tutun. (iPhone'lar ancak bu menü açıkken kendini dışarıya yayınlar). Bluetooth'u kapatıp açarak tekrar deneyin.",
-        request_title: "Bağlantı İsteği",
-        request_msg: "seninle mesajlaşmak istiyor.",
-        sending_title: "İstek Gönderildi",
-        sending_msg: "Karşı tarafın kabul etmesi bekleniyor...",
-        accept: "Kabul Et",
-        refuse: "Reddet",
-        cancel: "İptal",
-        placeholder: "Mesaj yazın...",
-        p2p_status: "P2P Bağlantısı Aktif",
-        encryption: "Bluetooth P2P Şifreli 🇸🇾"
+        welcome: 'Surbit',
+        instruction: 'Bir rumuz girerek başlayın.',
+        login_btn: 'Bağlan',
+        encryption: 'QR P2P · Uçtan Uca Şifreli 🔒',
+        active_title: 'Bağlantılar',
+        no_conn: 'Henüz bağlantı yok.',
+        no_conn_hint: 'Sağ üstteki + butonuna bas.',
+        qr_title: 'Yeni Bağlantı',
+        role_title: 'Rol Seç',
+        role_desc: 'Bağlantıyı kim başlatıyor?',
+        host_btn: 'QR Oluştur (Ben başlatıyorum)',
+        guest_btn: 'QR Tara (Karşıdan başlatıldı)',
+        step1: 'Adım 1/2 · Bu QR\'ı karşı cihaza okut',
+        host_hint: 'Karşı cihaz QR\'ı okutunca devam edecek...',
+        host_next: 'Karşıdan QR Tara',
+        step_g1: 'Adım 1/2 · Karşıdaki ekranı kamerana göster',
+        scan_hint: 'QR koda odaklan...',
+        step2: 'Adım 2/2 · Karşıdaki cevap QR\'ını tara',
+        step2_hint: 'Cevap QR\'ına odaklan...',
+        step_g2: 'Adım 2/2 · Bu QR\'ı karşı cihaza okut',
+        guest_hint: 'Karşı cihaz okuyunca bağlantı kurulacak...',
+        connecting: 'Bağlanıyor...',
+        connecting_hint: 'WebRTC Tüneli Kuruluyor',
+        p2p_status: 'P2P Bağlantısı Aktif 🔒',
+        placeholder: 'Mesaj yazın...',
     },
     ar: {
-        welcome: "سوربيت 🇸🇾",
-        instruction: "يرجى إدخال اسم مستعار للبدء.",
-        login_btn: "اتصال",
-        active_title: "أجهزة P2P النشطة",
-        scanning: "جاري البحث عن أجهزة... 🔍",
-        no_device: "لم يتم العثور على أجهزة حقيقية.",
-        no_device_desc: "لاختبارات P2P، يرجى إبقاء قائمة <b>الإعدادات > البلوتوث</b> مفتوحة على الشاشة على كلا الجهازين. (أجهزة iPhone تبث نفسها للخارج فقط عندما تكون هذه القائمة مفتوحة).",
-        request_title: "طلب اتصال",
-        request_msg: "يريد مراسلتك.",
-        sending_title: "تم إرسال الطلب",
-        sending_msg: "في انتظار قبول الطرف الآخر...",
-        accept: "قبول",
-        refuse: "رفض",
-        cancel: "إلغاء",
-        placeholder: "اكتب رسالة...",
-        p2p_status: "اتصال P2P نشط",
-        encryption: "تشفير بلوتوث P2P 🇸🇾"
+        welcome: 'سوربيت',
+        instruction: 'أدخل اسماً مستعاراً للبدء.',
+        login_btn: 'اتصال',
+        encryption: 'نفق QR · مشفر من طرف إلى طرف 🔒',
+        active_title: 'الاتصالات',
+        no_conn: 'لا توجد اتصالات بعد.',
+        no_conn_hint: 'اضغط زر + في أعلى اليمين.',
+        qr_title: 'اتصال جديد',
+        role_title: 'اختر الدور',
+        role_desc: 'من يبدأ الاتصال؟',
+        host_btn: 'إنشاء QR (أنا أبدأ)',
+        guest_btn: 'مسح QR (الطرف الآخر بدأ)',
+        step1: 'الخطوة 1/2 · اعرض هذا QR للجهاز الآخر',
+        host_hint: 'انتظر حتى يمسح الجهاز الآخر...',
+        host_next: 'امسح QR الجهاز الآخر',
+        step_g1: 'الخطوة 1/2 · وجّه الكاميرا نحو شاشة الجهاز الآخر',
+        scan_hint: 'ركز على رمز QR...',
+        step2: 'الخطوة 2/2 · امسح QR الرد من الجهاز الآخر',
+        step2_hint: 'ركز على QR الرد...',
+        step_g2: 'الخطوة 2/2 · اعرض هذا QR للجهاز الآخر',
+        guest_hint: 'سيتصل الجهاز الآخر عند المسح...',
+        connecting: 'جارٍ الاتصال...',
+        connecting_hint: 'إنشاء نفق WebRTC',
+        p2p_status: 'اتصال P2P نشط 🔒',
+        placeholder: 'اكتب رسالة...',
     },
     en: {
-        welcome: "Surbit 🇸🇾",
-        instruction: "Please enter a nickname to start.",
-        login_btn: "Connect",
-        active_title: "Active P2P Devices",
-        scanning: "Scanning for devices... 🔍",
-        no_device: "No real hardware found.",
-        no_device_desc: "For P2P tests, please keep the <b>Settings > Bluetooth</b> menu OPEN and ON SCREEN on both devices. (iPhones only broadcast themselves when this menu is open).",
-        request_title: "Connection Request",
-        request_msg: "wants to chat with you.",
-        sending_title: "Request Sent",
-        sending_msg: "Waiting for peer to accept...",
-        accept: "Accept",
-        refuse: "Refuse",
-        cancel: "Cancel",
-        placeholder: "Type a message...",
-        p2p_status: "P2P Connection Active",
-        encryption: "Bluetooth P2P Encrypted 🇸🇾"
+        welcome: 'Surbit',
+        instruction: 'Enter a nickname to start.',
+        login_btn: 'Connect',
+        encryption: 'QR P2P · End-to-End Encrypted 🔒',
+        active_title: 'Connections',
+        no_conn: 'No connections yet.',
+        no_conn_hint: 'Tap the + button above.',
+        qr_title: 'New Connection',
+        role_title: 'Choose Role',
+        role_desc: 'Who is initiating the connection?',
+        host_btn: 'Generate QR (I\'m the host)',
+        guest_btn: 'Scan QR (Peer is the host)',
+        step1: 'Step 1/2 · Show this QR to the other device',
+        host_hint: 'Waiting for the other device to scan...',
+        host_next: 'Scan Peer\'s QR',
+        step_g1: 'Step 1/2 · Point camera at the other screen',
+        scan_hint: 'Focus on the QR code...',
+        step2: 'Step 2/2 · Scan the answer QR from the other device',
+        step2_hint: 'Focus on the answer QR...',
+        step_g2: 'Step 2/2 · Show this QR to the other device',
+        guest_hint: 'The other device will connect when scanned...',
+        connecting: 'Connecting...',
+        connecting_hint: 'Establishing WebRTC Tunnel',
+        p2p_status: 'P2P Connection Active 🔒',
+        placeholder: 'Type a message...',
     }
 };
 
-// 1. Language Logic
+// ============ DİL ============
 window.changeLanguage = (lang) => {
     CURRENT_LANG = lang;
     localStorage.setItem('surbit_lang', lang);
     applyTranslations();
-    // Dil menülerini kapat
-    document.getElementById('lang-options').classList.add('lang-options-hidden');
-    document.getElementById('chat-lang-options').classList.add('lang-options-hidden');
+    g('lang-options').classList.add('lang-options-hidden');
+    g('chat-lang-options').classList.add('lang-options-hidden');
 };
 
+function g(id) { return document.getElementById(id); }
+
 function applyTranslations() {
-    const t = translations[CURRENT_LANG];
-    const get = (id) => document.getElementById(id);
-    if (get('lang-welcome')) get('lang-welcome').innerText = t.welcome;
-    if (get('lang-instruction')) get('lang-instruction').innerText = t.instruction;
-    if (get('login-btn')) get('login-btn').innerText = t.login_btn;
-    if (get('lang-active-title')) get('lang-active-title').innerText = t.active_title;
-    if (get('lang-request-title')) get('lang-request-title').innerText = t.request_title;
-    if (get('accept-btn')) get('accept-btn').innerText = t.accept;
-    if (get('refuse-btn')) get('refuse-btn').innerText = t.refuse;
-    if (get('message-input')) get('message-input').placeholder = t.placeholder;
-    if (get('lang-p2p-status')) get('lang-p2p-status').innerText = t.p2p_status;
-    if (get('lang-encryption')) get('lang-encryption').innerText = t.encryption;
+    const t = T[CURRENT_LANG];
+    const set = (id, val) => { const el = g(id); if (el) el.innerText = val; };
 
-    // Aktif dil butonunu işaretle
+    set('lang-welcome', t.welcome);
+    set('lang-instruction', t.instruction);
+    set('login-btn', t.login_btn);
+    set('lang-encryption', t.encryption);
+    set('lang-active-title', t.active_title);
+    set('lang-no-conn', t.no_conn);
+    set('lang-no-conn-hint', t.no_conn_hint);
+    set('lang-qr-title', t.qr_title);
+    set('lang-role-title', t.role_title);
+    set('lang-role-desc', t.role_desc);
+    set('lang-host-btn', t.host_btn);
+    set('lang-guest-btn', t.guest_btn);
+    set('lang-step1', t.step1);
+    set('lang-host-hint', t.host_hint);
+    set('lang-host-next', t.host_next);
+    set('lang-step-g1', t.step_g1);
+    set('lang-scan-hint', t.scan_hint);
+    set('lang-step2', t.step2);
+    set('lang-step2-hint', t.step2_hint);
+    set('lang-step-g2', t.step_g2);
+    set('lang-guest-hint', t.guest_hint);
+    set('lang-connecting', t.connecting);
+    set('lang-connecting-hint', t.connecting_hint);
+    set('lang-p2p-status', t.p2p_status);
+
+    const mi = g('message-input');
+    if (mi) mi.placeholder = t.placeholder;
+
+    // Aktif dil butonu
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-    const activeBtn = document.getElementById(`lang-${CURRENT_LANG}`);
-    if (activeBtn) activeBtn.classList.add('active');
-
-    updateEmptyState();
+    const ab = g(`lang-${CURRENT_LANG}`);
+    if (ab) ab.classList.add('active');
 }
 
-function updateEmptyState() {
-    if (CURRENT_SCAN_STATE === 'idle') return;
-    const t = translations[CURRENT_LANG];
-    if (dmList.querySelector('.dm-item')) dmList.innerHTML = '';
+// ============ GİRİŞ ============
+g('login-btn').onclick = () => {
+    const name = g('username-input').value.trim();
+    if (!name) { g('username-input').focus(); return; }
+    MY_USERNAME = name;
+    localStorage.setItem('surbit_username', name);
 
-    let el = dmList.querySelector('.empty-state');
-    if (!el) {
-        el = document.createElement('div');
-        el.className = 'empty-state';
-        dmList.appendChild(el);
-    }
+    const lo = g('loading-overlay');
+    lo.classList.remove('loader-hidden');
+    setTimeout(() => {
+        lo.classList.add('loader-hidden');
+        g('login-overlay').style.display = 'none';
+    }, 1200);
+};
 
-    if (CURRENT_SCAN_STATE === 'scanning') {
-        el.innerHTML = t.scanning;
-    } else if (CURRENT_SCAN_STATE === 'no_device') {
-        el.innerHTML = `<b>${t.no_device}</b><br><br><span style="font-size: 0.85rem; line-height: 1.5; display: block; margin-top: 5px;">${t.no_device_desc}</span>`;
-    } else if (CURRENT_SCAN_STATE === 'error') {
-        el.innerHTML = `<b>Bağlantı/İzin Hatası:</b><br><span style="font-size: 0.85rem; opacity: 0.8; margin-top: 5px; display: block;">${LAST_ERROR}</span>`;
-    }
-}
+g('username-input').onkeypress = (e) => { if (e.key === 'Enter') g('login-btn').click(); };
 
-let IS_BT_INITIALIZED = false;
-
-// 1b. Bluetooth Durum Kontrolü
-async function checkBTStatus() {
-    const statusBar = document.getElementById('bt-status-bar');
-    const statusText = document.getElementById('bt-status-text');
-    if (!statusBar) return;
-
-    if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
-        if (!IS_BT_INITIALIZED) {
-            // iOS'ta initialize olmadan API çağrısı crash ettirebilir
-            return;
+// ============ EKRAN GEÇİŞLERİ ============
+function showView(id) {
+    ['dm-view', 'qr-view', 'chat-view'].forEach(v => {
+        const el = g(v);
+        if (el) {
+            el.classList.remove('view-active');
+            el.classList.add('view-hidden');
         }
+    });
+    const target = g(id);
+    if (target) {
+        target.classList.remove('view-hidden');
+        target.classList.add('view-active');
+    }
+}
+
+g('new-conn-btn').onclick = () => {
+    stopCamera();
+    resetQRSteps();
+    showView('qr-view');
+};
+
+g('back-from-qr').onclick = () => {
+    stopCamera();
+    closePeer();
+    showView('dm-view');
+};
+
+g('back-to-dm').onclick = () => {
+    showView('dm-view');
+};
+
+function showQRStep(id) {
+    ['step-role', 'step-host-qr', 'step-guest-scan', 'step-host-scan', 'step-guest-qr', 'step-connecting'].forEach(s => {
+        const el = g(s);
+        if (el) el.style.display = 'none';
+    });
+    const target = g(id);
+    if (target) target.style.display = 'flex';
+}
+
+function resetQRSteps() {
+    showQRStep('step-role');
+}
+
+// ============ WebRTC ALTYAPI ============
+const ICE_SERVERS = { iceServers: [] }; // Tamamen offline çalışır, STUN/TURN sunucusu yok
+
+function createPeerConnection(onIceDone, onMessage) {
+    closePeer();
+    peerConnection = new RTCPeerConnection(ICE_SERVERS);
+
+    // ICE toplandıktan sonra tetiklenir
+    peerConnection.onicecandidate = () => { };
+    peerConnection.onicegatheringstatechange = () => {
+        if (peerConnection.iceGatheringState === 'complete') {
+            onIceDone(peerConnection.localDescription);
+        }
+    };
+
+    peerConnection.ondatachannel = (event) => {
+        dataChannel = event.channel;
+        setupDataChannel(onMessage);
+    };
+
+    peerConnection.onconnectionstatechange = () => {
+        console.log('Connection state:', peerConnection.connectionState);
+        if (peerConnection.connectionState === 'connected') {
+            onConnectionEstablished();
+        } else if (['disconnected', 'failed', 'closed'].includes(peerConnection.connectionState)) {
+            handleDisconnect();
+        }
+    };
+
+    return peerConnection;
+}
+
+function setupDataChannel(onMessage) {
+    dataChannel.onopen = () => {
+        console.log('DataChannel open');
+        onConnectionEstablished();
+    };
+    dataChannel.onmessage = (evt) => {
         try {
-            const Ble = window.Capacitor.Plugins.BluetoothLe;
-            const isEnabled = await Ble.isEnabled();
-
-            if (isEnabled.value) {
-                statusBar.className = 'status-enabled';
-                statusText.innerText = '✅ Bluetooth Aktif ve Hazır';
-            } else {
-                statusBar.className = 'status-disabled';
-                statusText.innerText = '🔴 Bluetooth Kapalı - Lütfen Açın';
-            }
-        } catch (e) {
-            console.error("BT Status check failed", e);
-            statusBar.className = 'status-disabled';
-            statusText.innerText = '⚠️ Bluetooth Durumu Alınamadı';
-        }
-    } else {
-        // Plugin Yüklü Değil Veya Çalışmıyor
-        statusBar.className = 'status-disabled';
-        statusText.innerText = '🔴 Kritik Hata: BT Eklentisi Eksik';
-    }
+            const msg = JSON.parse(evt.data);
+            onMessage(msg);
+        } catch (e) { }
+    };
+    dataChannel.onclose = () => handleDisconnect();
 }
 
-// 2. Discovery
-async function startDiscovery() {
-    if (!MY_USERNAME) return;
-    CURRENT_SCAN_STATE = 'scanning';
-    updateEmptyState();
-    DISCOVERED_DEVICES = [];
-    debugLog("--- TARAMA BAŞLATILDI ---");
+function closePeer() {
+    if (dataChannel) { try { dataChannel.close(); } catch (e) { } dataChannel = null; }
+    if (peerConnection) { try { peerConnection.close(); } catch (e) { } peerConnection = null; }
+}
 
-    localStorage.setItem('bt_crash_guard', '1');
+// ============ HOST AKIŞI ============
+// HOST: Offer oluştur → QR göster → Answer QR okut → Bağlan
+window.startAsHost = async () => {
+    showQRStep('step-host-qr');
 
-    if (window.Capacitor && window.Capacitor.Plugins.BluetoothLe) {
-        const Ble = window.Capacitor.Plugins.BluetoothLe;
+    const pc = createPeerConnection(async (localDesc) => {
+        // ICE toplandı, Offer'ı QR'a yaz
+        const offerStr = JSON.stringify({ sdp: localDesc.sdp, type: localDesc.type, from: MY_USERNAME });
+        await generateQR('qr-canvas', offerStr);
+    }, receiveMessage);
 
-        if (scanListener) {
-            try {
-                await scanListener.remove();
-                debugLog("Eski dinleyici silindi.");
-            } catch (e) {
-                debugLog("Eski dinleyici silinirken hata: " + e.message, true);
-            }
-            scanListener = null;
-        }
+    // DataChannel oluştur (HOST açar)
+    dataChannel = pc.createDataChannel('chat', { ordered: true });
+    setupDataChannel(receiveMessage);
 
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+};
+
+// HOST: Adım 2 - Answer QR'ı tara
+window.hostStep2 = () => {
+    showQRStep('step-host-scan');
+    startScanner('scan-video2', 'scan-canvas2', async (data) => {
+        stopCamera('scan-video2');
         try {
-            const platform = window.Capacitor.getPlatform();
-            debugLog("Platform algılandı: " + platform);
+            const answer = JSON.parse(data);
+            CURRENT_CHAT_PEER = { name: answer.from || 'Karşı Taraf', conn: null };
+            showQRStep('step-connecting');
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (e) {
+            console.error('Answer parse error', e);
+            alert('QR okunamadı, tekrar deneyin.');
+            showQRStep('step-host-scan');
+        }
+    });
+};
 
-            if (platform === 'android') {
-                try { await Ble.initialize(); IS_BT_INITIALIZED = true; debugLog("Android: Motor başlatıldı."); } catch (e) { debugLog("Android Init Hata: " + e.message, true); IS_BT_INITIALIZED = true; }
-                try { await Ble.requestPermissions(); debugLog("Android: İzinler istendi."); } catch (e) { debugLog("Perm Hata: " + e.message, true); }
-                try { await Ble.enable(); debugLog("Android: Bluetooth açılması istendi."); } catch (e) { debugLog("Enable Hata: " + e.message, true); }
-            } else if (platform === 'ios') {
-                try {
-                    await Ble.initialize();
-                    IS_BT_INITIALIZED = true;
-                    debugLog("iOS: Motor başlatıldı.");
-                } catch (e) {
-                    debugLog("iOS BT Init Hatası: " + e.message, true);
-                    IS_BT_INITIALIZED = true;
-                }
-            } else {
-                try { await Ble.initialize(); IS_BT_INITIALIZED = true; } catch (e) { }
-            }
+// ============ GUEST AKIŞI ============
+// GUEST: Offer QR oku → Answer QR göster → Bağlan
+window.startAsGuest = () => {
+    showQRStep('step-guest-scan');
+    startScanner('scan-video', 'scan-canvas', async (data) => {
+        stopCamera('scan-video');
+        try {
+            const offer = JSON.parse(data);
+            CURRENT_CHAT_PEER = { name: offer.from || 'Karşı Taraf', conn: null };
 
-            // GÜVENLİ DURUM KONTROLÜ
-            debugLog("Cihaz hazırlık durumu kontrol ediliyor...");
-            let isReady = false;
-            for (let i = 0; i < 20; i++) {
-                try {
-                    const check = await Ble.isEnabled();
-                    if (check && check.value === true) {
-                        isReady = true;
-                        debugLog("Bluetooth açık ve hazır! (Test geçildi)");
-                        break;
-                    }
-                } catch (err) {
-                    debugLog("Bekleniyor (" + i + ")...", true);
-                }
-                await new Promise(r => setTimeout(r, 1000));
-            }
+            const pc = createPeerConnection(async (localDesc) => {
+                // Answer ICE toplandı, QR'a yaz
+                const answerStr = JSON.stringify({ sdp: localDesc.sdp, type: localDesc.type, from: MY_USERNAME });
+                showQRStep('step-guest-qr');
+                await generateQR('qr-canvas2', answerStr);
+            }, receiveMessage);
 
-            if (!isReady) {
-                throw new Error("BT motoru zaman aşımına uğradı veya izniniz yok.");
-            }
-
-            localStorage.removeItem('bt_crash_guard');
-
-            debugLog("Dinleyici (Listener) kaydediliyor...");
-            scanListener = await Ble.addListener('onScanResult', (res) => {
-                if (!res || !res.device) return;
-                const name = res.device.name || res.device.localName || ("Cihaz_" + res.device.deviceId.substring(0, 6));
-
-                if (!DISCOVERED_DEVICES.find(d => d.deviceId === res.device.deviceId)) {
-                    DISCOVERED_DEVICES.push(res.device);
-                    addDeviceToDmList(name, res.rssi || -99, res.device.deviceId);
-
-                    CURRENT_SCAN_STATE = 'idle';
-                    const emptyState = dmList.querySelector('.empty-state');
-                    if (emptyState) emptyState.remove();
-                }
-            });
-
-            debugLog("LE Taraması (requestLEScan) tetikleniyor...");
-            await Ble.requestLEScan({
-                services: [], // CRITICAL FIX: Empty array explicitly specified to prevent null pointer crashes on iOS native Bridge
-                allowDuplicates: false
-            });
-            debugLog("Tarama motoru başarıyla çalışıyor! Cihazlar aranıyor...");
-
-            checkBTStatus();
-
-            setTimeout(async () => {
-                debugLog("15 sn doldu, tarama durduruluyor.");
-                try { await Ble.stopLEScan(); } catch (e) { }
-                if (DISCOVERED_DEVICES.length === 0) {
-                    CURRENT_SCAN_STATE = 'no_device';
-                    updateEmptyState();
-                }
-            }, 15000);
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
 
         } catch (e) {
-            localStorage.removeItem('bt_crash_guard');
-            debugLog("KRİTİK HATA: " + e.message, true);
-            CURRENT_SCAN_STATE = 'error';
-            LAST_ERROR = (e.message || 'Bilinmeyen Hata') + " (Telefon ayarlarından Bluetooth yetkisi gereklidir)";
-            updateEmptyState();
+            console.error('Offer parse error', e);
+            alert('QR okunamadı, tekrar deneyin.');
+            showQRStep('step-guest-scan');
         }
-    } else {
-        localStorage.removeItem('bt_crash_guard');
-        debugLog("EKLENTİ YOK: Capacitor-bluetooth-le bulunamadı!", true);
-        CURRENT_SCAN_STATE = 'error';
-        LAST_ERROR = "Sistem Hatası: P2P Motoru (Bluetooth) derlenirken eklenmemiş.";
-        updateEmptyState();
+    });
+};
+
+// ============ QR KOD OLUŞTUR ============
+async function generateQR(canvasId, text) {
+    const canvas = g(canvasId);
+    if (!canvas) return;
+    try {
+        await QRCode.toCanvas(canvas, text, {
+            width: 220,
+            margin: 2,
+            color: { dark: '#0f172a', light: '#ffffff' },
+            errorCorrectionLevel: 'L'
+        });
+    } catch (e) {
+        console.error('QR generate error', e);
     }
 }
 
-function addDeviceToDmList(name, rssi, deviceId) {
-    if (dmList.querySelector('.empty-state')) dmList.innerHTML = '';
+// ============ QR KOD TARA (KAMERA) ============
+async function startScanner(videoId, canvasId, onFound) {
+    const video = g(videoId);
+    const canvas = g(canvasId);
+    if (!video || !canvas) return;
+
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } },
+            audio: false
+        });
+        video.srcObject = localStream;
+        await video.play();
+
+        const ctx = canvas.getContext('2d');
+
+        if (scanInterval) clearInterval(scanInterval);
+        scanInterval = setInterval(() => {
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: 'dontInvert'
+            });
+            if (code && code.data && code.data.includes('"sdp"')) {
+                clearInterval(scanInterval);
+                scanInterval = null;
+                onFound(code.data);
+            }
+        }, 200);
+    } catch (e) {
+        console.error('Camera error', e);
+        alert('Kamera açılamadı. Kamera iznini kontrol edin.');
+    }
+}
+
+function stopCamera(videoId) {
+    if (scanInterval) { clearInterval(scanInterval); scanInterval = null; }
+    if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+    }
+    // Her iki video elementini temizle
+    ['scan-video', 'scan-video2'].forEach(id => {
+        const el = g(id);
+        if (el) { el.srcObject = null; }
+    });
+}
+
+// ============ BAĞLANTI KURULDU ============
+function onConnectionEstablished() {
+    stopCamera();
+    if (!CURRENT_CHAT_PEER) return;
+    const name = CURRENT_CHAT_PEER.name;
+
+    // DM listesine ekle (eğer yoksa)
+    const existingItems = document.querySelectorAll('.dm-item');
+    let alreadyExists = false;
+    existingItems.forEach(item => {
+        if (item.dataset.peer === name) alreadyExists = true;
+    });
+
+    if (!alreadyExists) {
+        addToDmList(name);
+    }
+
+    // Sohbeti aç
+    openChat(name);
+}
+
+function handleDisconnect() {
+    if (!CURRENT_CHAT_PEER) return;
+    console.log('Peer disconnected');
+    // Statüyü güncelle ama sohbet geçmişini koru
+}
+
+// ============ DM LİSTESİ ============
+function addToDmList(name) {
+    const dmList = g('dm-list');
+    const empty = dmList.querySelector('.empty-state');
+    if (empty) empty.remove();
+
     const div = document.createElement('div');
     div.className = 'dm-item';
+    div.dataset.peer = name;
     div.innerHTML = `
-        <div class="dm-avatar">${name[0]}</div>
+        <div class="dm-avatar">${name[0].toUpperCase()}</div>
         <div class="dm-info">
             <div class="dm-name">${name}</div>
-            <div class="dm-status">Sig: ${rssi}dBm • P2P Ready</div>
+            <div class="dm-status">P2P Bağlı 🔒</div>
         </div>
     `;
-    div.onclick = () => connectToDevice(name, deviceId);
+    div.onclick = () => openChat(name);
     dmList.appendChild(div);
 }
 
-// 3. Chat Session Logic
-function sendRequestFlow(name, deviceId) {
-    const t = translations[CURRENT_LANG];
+// ============ SOHBET ============
+function openChat(name) {
+    g('chat-with-name').innerText = name;
+    const mi = g('message-input');
+    const sb = g('send-btn');
+    mi.disabled = false;
+    sb.disabled = false;
+    mi.placeholder = T[CURRENT_LANG].placeholder;
 
-    // UI'da "İstek Gönderildi" modunu aç
-    document.getElementById('lang-request-title').innerText = t.sending_title;
-    document.getElementById('request-msg').innerText = `${name} - ${t.sending_msg}`;
-
-    // Butonları gizle, iptal butonu koy
-    acceptBtn.style.display = 'none';
-    refuseBtn.innerText = t.cancel;
-    refuseBtn.style.display = 'block';
-
-    requestModal.style.display = 'flex';
-
-    // Bluetooth P2P bağlantısı kuruyormuş gibi bekleme animasyonu
-    let simTimer = setTimeout(() => {
-        requestModal.style.display = 'none';
-        CURRENT_CHAT_DEVICE = { name, deviceId };
-        openChat();
-    }, 2500);
-
-    refuseBtn.onclick = () => {
-        clearTimeout(simTimer);
-        requestModal.style.display = 'none';
-    };
-}
-
-// Cihaza basıldığında İSTEK GÖNDERME ekranını aç
-function connectToDevice(name, deviceId) {
-    sendRequestFlow(name, deviceId);
-}
-
-// Bu fonksiyon dışarıdan gelen hayali/gerçek istekleri karşılamak için
-function incomingRequestFlow(name, deviceId) {
-    const t = translations[CURRENT_LANG];
-    document.getElementById('lang-request-title').innerText = t.request_title;
-    document.getElementById('request-msg').innerText = `${name} ${t.request_msg}`;
-
-    acceptBtn.style.display = 'block';
-    acceptBtn.innerText = t.accept;
-    refuseBtn.style.display = 'block';
-    refuseBtn.innerText = t.refuse;
-
-    requestModal.style.display = 'flex';
-
-    acceptBtn.onclick = () => {
-        requestModal.style.display = 'none';
-        CURRENT_CHAT_DEVICE = { name, deviceId };
-        openChat();
-    };
-    refuseBtn.onclick = () => requestModal.style.display = 'none';
-}
-
-function openChat() {
-    const { name, deviceId } = CURRENT_CHAT_DEVICE;
-    chatWithName.innerText = name;
-    dmView.classList.replace('view-active', 'view-hidden');
-    chatView.classList.replace('view-hidden', 'view-active');
+    const messagesDiv = g('messages');
     messagesDiv.innerHTML = '';
-    if (CHAT_HISTORIES[deviceId]) {
-        CHAT_HISTORIES[deviceId].forEach(m => appendToUI(m.sender, m.text, m.time, m.isMe));
+
+    if (CHAT_HISTORIES[name]) {
+        CHAT_HISTORIES[name].forEach(m => appendMessage(m.sender, m.text, m.time, m.isMe));
     }
-    messageInput.disabled = false;
-    sendBtn.disabled = false;
-    messageInput.focus();
+
+    showView('chat-view');
+    setTimeout(() => { mi.focus(); }, 300);
 }
 
-backToDmBtn.onclick = () => {
-    chatView.classList.replace('view-active', 'view-hidden');
-    dmView.classList.replace('view-hidden', 'view-active');
-};
-
-// 4. Messaging
-function handleSend() {
-    const text = messageInput.value.trim();
-    if (!text) return;
+function receiveMessage(msg) {
+    if (!msg || !msg.text) return;
+    const name = CURRENT_CHAT_PEER ? CURRENT_CHAT_PEER.name : 'Karşı Taraf';
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const msg = { sender: MY_USERNAME, text, time, isMe: true };
-    const id = CURRENT_CHAT_DEVICE.deviceId;
-    if (!CHAT_HISTORIES[id]) CHAT_HISTORIES[id] = [];
-    CHAT_HISTORIES[id].push(msg);
-    appendToUI(MY_USERNAME, text, time, true);
-    messageInput.value = '';
-    messageInput.focus();
+    const m = { sender: name, text: msg.text, time, isMe: false };
+
+    if (!CHAT_HISTORIES[name]) CHAT_HISTORIES[name] = [];
+    CHAT_HISTORIES[name].push(m);
+
+    if (g('chat-with-name').innerText === name) {
+        appendMessage(m.sender, m.text, m.time, false);
+    }
 }
 
-function appendToUI(sender, text, time, isMe) {
+function handleSend() {
+    if (!dataChannel || dataChannel.readyState !== 'open') {
+        alert('Bağlantı kesildi.');
+        return;
+    }
+    const text = g('message-input').value.trim();
+    if (!text) return;
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const name = CURRENT_CHAT_PEER ? CURRENT_CHAT_PEER.name : '';
+
+    try {
+        dataChannel.send(JSON.stringify({ text, from: MY_USERNAME }));
+    } catch (e) {
+        alert('Mesaj gönderilemedi.');
+        return;
+    }
+
+    const m = { sender: MY_USERNAME, text, time, isMe: true };
+    if (!CHAT_HISTORIES[name]) CHAT_HISTORIES[name] = [];
+    CHAT_HISTORIES[name].push(m);
+    appendMessage(MY_USERNAME, text, time, true);
+
+    g('message-input').value = '';
+    g('message-input').focus();
+}
+
+function appendMessage(sender, text, time, isMe) {
+    const messagesDiv = g('messages');
     const div = document.createElement('div');
     div.className = `message ${isMe ? 'sent' : 'received'}`;
     div.innerHTML = `
-        <div class="msg-bubble">${text}</div>
-        <div style="font-size:0.65rem; opacity:0.5; margin-top:4px; text-align:${isMe ? 'right' : 'left'}">${time}</div>
+        <div class="msg-bubble">${escapeHtml(text)}</div>
+        <div class="msg-time" style="text-align:${isMe ? 'right' : 'left'}">${time}</div>
     `;
     messagesDiv.appendChild(div);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-sendBtn.onclick = handleSend;
-messageInput.onkeypress = (e) => { if (e.key === 'Enter') handleSend(); };
-
-// 5. App Start and Transitions
-const langOptions = document.getElementById('lang-options');
-const chatLangOptions = document.getElementById('chat-lang-options');
-
-function toggleLangMenu(menu) {
-    menu.classList.toggle('lang-options-hidden');
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
-document.getElementById('lang-menu-btn').onclick = (e) => {
+g('send-btn').onclick = handleSend;
+g('message-input').onkeypress = (e) => { if (e.key === 'Enter') handleSend(); };
+
+// ============ DİL MENÜSÜ ============
+const langOptions = g('lang-options');
+const chatLangOptions = g('chat-lang-options');
+
+g('lang-menu-btn').onclick = (e) => {
     e.stopPropagation();
-    toggleLangMenu(langOptions);
+    langOptions.classList.toggle('lang-options-hidden');
 };
 
-document.getElementById('chat-lang-menu-btn').onclick = (e) => {
+g('chat-lang-menu-btn').onclick = (e) => {
     e.stopPropagation();
-    toggleLangMenu(chatLangOptions);
+    chatLangOptions.classList.toggle('lang-options-hidden');
 };
 
-// Menü dışına tıklandığında kapat
 window.onclick = () => {
     langOptions.classList.add('lang-options-hidden');
     chatLangOptions.classList.add('lang-options-hidden');
 };
 
-loginBtn.onclick = () => {
-    const name = usernameInput.value.trim();
-    if (!name) return;
-
-    MY_USERNAME = name;
-    localStorage.setItem('bitcep_username', name);
-
-    // Show Loading (Premium Transition)
-    loadingOverlay.classList.remove('loader-hidden');
-
-    setTimeout(() => {
-        loadingOverlay.classList.add('loader-hidden');
-        loginOverlay.style.display = 'none';
-        startDiscovery();
-    }, 1500);
-};
-
-btRefreshBtn.onclick = startDiscovery;
-
+// ============ BAŞLAT ============
 document.addEventListener('DOMContentLoaded', () => {
     applyTranslations();
-    checkBTStatus(); // Bluetooth durumunu kontrol et
-    setInterval(checkBTStatus, 5000); // Her 5 saniyede bir guncelle
 
-    const saved = localStorage.getItem('bitcep_username');
+    const saved = localStorage.getItem('surbit_username');
     if (saved) {
         MY_USERNAME = saved;
-        loginOverlay.style.display = 'none';
-        startDiscovery();
+        g('login-overlay').style.display = 'none';
     }
 });

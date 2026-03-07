@@ -5,36 +5,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Surbit 🇸🇾 - P2P Chat</title>
+    <meta name="description" content="Surbit: Offline, güvenli, Bluetooth gerektirmeyen P2P mesajlaşma uygulaması.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- QR Code Generator -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <!-- QR Code Scanner -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <link rel="stylesheet" href="style.css">
-
 </head>
 
 <body>
 
-    <!-- Giriş Ekranı -->
+    <!-- ===== GİRİŞ EKRANI ===== -->
     <div id="login-overlay">
-        <div id="bt-status-bar" class="status-disabled">
-            <span class="status-dot"></span>
-            <span id="bt-status-text">Bluetooth Kapalı</span>
-        </div>
         <div class="login-card">
             <div class="lang-selector">
-                <button class="lang-btn" id="lang-tr" onclick="changeLanguage('tr')">🇹🇷</button>
+                <button class="lang-btn active" id="lang-tr" onclick="changeLanguage('tr')">🇹🇷</button>
                 <button class="lang-btn" id="lang-ar" onclick="changeLanguage('ar')">🇸🇾</button>
                 <button class="lang-btn" id="lang-en" onclick="changeLanguage('en')">🇺🇸</button>
             </div>
-            <h2 id="lang-welcome">Surbit 🇸🇾</h2>
+            <div class="login-logo">🇸🇾</div>
+            <h2 id="lang-welcome">Surbit</h2>
             <p id="lang-instruction">Lütfen bir rumuz girerek başlayın.</p>
-            <input type="text" id="username-input" placeholder="Rumuz..." maxlength="15">
+            <input type="text" id="username-input" placeholder="Rumuz..." maxlength="15" autocomplete="off">
             <button class="login-btn" id="login-btn">Bağlan</button>
-            <p class="encryption-msg" id="lang-encryption">Bluetooth P2P Şifreli 🇸🇾</p>
+            <p class="encryption-msg" id="lang-encryption">QR P2P · Uçtan Uca Şifreli 🔒</p>
         </div>
     </div>
 
-    <!-- Loading Ekranı (iPhone Style) -->
+    <!-- ===== LOADING ===== -->
     <div id="loading-overlay" class="loader-hidden">
         <div class="ios-spinner">
             <div></div>
@@ -52,15 +53,15 @@
         </div>
     </div>
 
-    <!-- Ana Uygulama Konteynırı -->
+    <!-- ===== ANA KONTEYNER ===== -->
     <div class="container">
 
-        <!-- DM Listesi Görünümü -->
+        <!-- ===== EKRAN 1: DM LİSTESİ ===== -->
         <div id="dm-view" class="view-active">
             <header>
                 <div class="header-main">
                     <h1 id="app-title">Surbit 🇸🇾</h1>
-                    <div id="status-badge" class="badge">Bluetooth Aktif</div>
+                    <div id="status-badge" class="badge" id="qr-status-badge">QR P2P</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <div class="lang-dropdown">
@@ -71,24 +72,122 @@
                             <button onclick="changeLanguage('en')">🇺🇸 English</button>
                         </div>
                     </div>
-                    <div id="bt-refresh" class="bt-icon">
-                        <svg viewBox="0 0 24 24" class="bt-svg-icon" fill="none" stroke="currentColor" stroke-width="2"
-                            stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"></polyline>
+                    <!-- Yeni Bağlantı Kur Butonu -->
+                    <button id="new-conn-btn" class="bt-icon" title="Yeni Bağlantı">
+                        <svg viewBox="0 0 24 24" class="bt-svg-icon" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                    </div>
+                    </button>
                 </div>
             </header>
 
             <div id="dm-list-container">
-                <div class="dm-section-title" id="lang-active-title">Aktif P2P Cihazları</div>
+                <div class="dm-section-title" id="lang-active-title">Bağlantılar</div>
                 <div id="dm-list">
-                    <div class="empty-state" id="lang-scanning">Cihazlar taranıyor...</div>
+                    <div class="empty-state" id="empty-hint">
+                        <div style="font-size:3rem; margin-bottom:1rem;">📡</div>
+                        <div id="lang-no-conn">Henüz bağlantı yok.</div>
+                        <div style="font-size:0.8rem; margin-top:0.5rem; opacity:0.6;" id="lang-no-conn-hint">Sağ
+                            üstteki + butonuna bas.</div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Chat Görünümü -->
+        <!-- ===== EKRAN 2: QR BAĞLANTI EKRANI ===== -->
+        <div id="qr-view" class="view-hidden">
+            <header>
+                <button id="back-from-qr" class="icon-btn">⬅️</button>
+                <h1 id="lang-qr-title" style="font-size:1.1rem; font-weight:800;">Yeni Bağlantı</h1>
+                <div style="width:40px;"></div>
+            </header>
+
+            <div id="qr-content">
+
+                <!-- Adım 1: Rol Seçimi -->
+                <div id="step-role" class="qr-step">
+                    <div class="step-icon">🤝</div>
+                    <h2 id="lang-role-title">Rol Seç</h2>
+                    <p id="lang-role-desc">Bağlantıyı kim başlatıyor?</p>
+                    <button class="qr-big-btn green" id="btn-host" onclick="startAsHost()">
+                        📤 <span id="lang-host-btn">QR Oluştur (Ben başlatıyorum)</span>
+                    </button>
+                    <button class="qr-big-btn outline" id="btn-guest" onclick="startAsGuest()">
+                        📷 <span id="lang-guest-btn">QR Tara (Karşıdan başlatıldı)</span>
+                    </button>
+                </div>
+
+                <!-- Adım 2a: HOST - QR Göster -->
+                <div id="step-host-qr" class="qr-step" style="display:none;">
+                    <p class="step-label" id="lang-step1">Adım 1/2 · Bu QR'ı karşı cihaza okut</p>
+                    <canvas id="qr-canvas" class="qr-canvas"></canvas>
+                    <p class="qr-hint" id="lang-host-hint">Karşı cihaz QR'ı okutunca devam edecek...</p>
+                    <div class="qr-pulse-ring"></div>
+                    <button class="qr-big-btn outline" id="btn-host-next" onclick="hostStep2()"
+                        style="margin-top:1.5rem;" id="lang-host-next-btn">
+                        📷 <span id="lang-host-next">Karşıdan QR Tara</span>
+                    </button>
+                </div>
+
+                <!-- Adım 2b: GUEST - QR Tara -->
+                <div id="step-guest-scan" class="qr-step" style="display:none;">
+                    <p class="step-label" id="lang-step-g1">Adım 1/2 · Karşıdaki ekranı kamerana göster</p>
+                    <div class="camera-wrap">
+                        <video id="scan-video" autoplay playsinline muted></video>
+                        <div class="scan-overlay">
+                            <div class="scan-corner tl"></div>
+                            <div class="scan-corner tr"></div>
+                            <div class="scan-corner bl"></div>
+                            <div class="scan-corner br"></div>
+                            <div class="scan-line"></div>
+                        </div>
+                    </div>
+                    <p class="qr-hint" id="lang-scan-hint">QR koda odaklan...</p>
+                    <canvas id="scan-canvas" style="display:none;"></canvas>
+                </div>
+
+                <!-- Adım 3: HOST - Cevap QR'ı Tara -->
+                <div id="step-host-scan" class="qr-step" style="display:none;">
+                    <p class="step-label" id="lang-step2">Adım 2/2 · Karşıdaki cevap QR'ını tara</p>
+                    <div class="camera-wrap">
+                        <video id="scan-video2" autoplay playsinline muted></video>
+                        <div class="scan-overlay">
+                            <div class="scan-corner tl"></div>
+                            <div class="scan-corner tr"></div>
+                            <div class="scan-corner bl"></div>
+                            <div class="scan-corner br"></div>
+                            <div class="scan-line"></div>
+                        </div>
+                    </div>
+                    <p class="qr-hint" id="lang-step2-hint">Cevap QR'ına odaklan...</p>
+                    <canvas id="scan-canvas2" style="display:none;"></canvas>
+                </div>
+
+                <!-- Adım 4: GUEST - Cevap QR'ı Göster -->
+                <div id="step-guest-qr" class="qr-step" style="display:none;">
+                    <p class="step-label" id="lang-step-g2">Adım 2/2 · Bu QR'ı karşı cihaza okut</p>
+                    <canvas id="qr-canvas2" class="qr-canvas"></canvas>
+                    <p class="qr-hint" id="lang-guest-hint">Karşı cihaz okuyunca bağlantı kurulacak...</p>
+                </div>
+
+                <!-- Bağlanıyor -->
+                <div id="step-connecting" class="qr-step" style="display:none;">
+                    <div class="connecting-anim">
+                        <div class="conn-ring"></div>
+                        <div class="conn-ring r2"></div>
+                        <div class="conn-icon">🔗</div>
+                    </div>
+                    <h2 id="lang-connecting">Bağlanıyor...</h2>
+                    <p id="lang-connecting-hint" style="opacity:0.6; font-size:0.85rem; margin-top:0.5rem;">WebRTC
+                        Tüneli Kuruluyor</p>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== EKRAN 3: CHAT ===== -->
         <div id="chat-view" class="view-hidden">
             <header>
                 <div style="display: flex; align-items: center; gap: 15px; flex: 1;">
@@ -113,36 +212,16 @@
             </div>
 
             <div class="chat-footer">
-                <button class="action-btn" id="attach-plus-btn">➕</button>
                 <div class="input-wrapper">
-                    <input type="text" id="message-input" placeholder="Mesaj yazın..." disabled>
+                    <input type="text" id="message-input" placeholder="Mesaj yazın..." disabled autocomplete="off">
                 </div>
-                <button class="action-btn" id="mic-btn">🎤</button>
                 <button id="send-btn" disabled>🚀</button>
             </div>
         </div>
 
-        <!-- Ses Kayıt Durumu -->
-        <div id="recorder-status" class="recorder-hidden">
-            <div class="recorder-bar"></div>
-            <span id="recorder-time">00:00</span>
-        </div>
-
-        <input type="file" id="photo-input" accept="image/*" style="display: none;">
     </div>
 
-    <!-- Bağlantı İsteği Modalı -->
-    <div id="request-modal" class="modal-hidden">
-        <div class="modal-content">
-            <h3 id="lang-request-title">Bağlantı İsteği</h3>
-            <p id="request-msg">...</p>
-            <div class="modal-actions">
-                <button id="refuse-btn" class="modal-btn secondary">Reddet</button>
-                <button id="accept-btn" class="modal-btn primary">Kabul Et</button>
-            </div>
-        </div>
-    </div>
-
+    <!-- WebRTC + PeerJS (CDN üzerinden, sunucu gerekmez) -->
     <script src="app.js"></script>
 </body>
 
