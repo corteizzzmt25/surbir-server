@@ -14,17 +14,58 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json({ limit: '20mb' }));
+// ===================== SQLITE DB ENTEGRASYONU =====================
+const sqlite3 = require('sqlite3').verbose();
+const dbName = path.join(__dirname, 'surbit.sqlite');
+const db = new sqlite3.Database(dbName, (err) => {
+    if (err) console.error("SQLite veritabanına bağlanılamadı!", err);
+    else console.log("SQLite veritabanına bağlanıldı.");
+});
 
-// ===================== IN-MEMORY DB =====================
-// In production you'd use a real DB. For local/demo use memory.
-const users = {};       // { email: { id, email, username, passwordHash, profilePhoto, createdAt } }
-const usernameIndex = {}; // { username_lowercase: email }
-const sessions = {};    // { token: email }
-const stories = [];     // [{ id, authorEmail, authorUsername, media, mediaType, text, createdAt, expiresAt }]
-const messages = {};    // { roomKey: [{ id, from, fromUsername, type, content, time }] }
-const onlineUsers = {}; // { socketId: { email, username } }
+// Tabloları oluşturma
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE,
+        username TEXT UNIQUE,
+        passwordHash TEXT,
+        profilePhoto TEXT,
+        createdAt INTEGER
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        email TEXT
+    )`);
+});
+
+// İn-memory yedekleri (sadece kolay arama için)
+let usersCache = {};
+let usernameIndex = {};
+let sessionsCache = {};
+
+// Veritabanını RAM'e yükle (Sunucu yavaşlamaması için memory cache kullanıyoruz ama SQLite'a da yazıyoruz)
+function loadDatabaseToMemory() {
+    db.all("SELECT * FROM users", [], (err, rows) => {
+        if (!err) {
+            rows.forEach(r => {
+                usersCache[r.email] = r;
+                usernameIndex[r.username.toLowerCase()] = r.email;
+            });
+        }
+    });
+    db.all("SELECT * FROM sessions", [], (err, rows) => {
+        if (!err) {
+            rows.forEach(r => {
+                sessionsCache[r.token] = r.email;
+            });
+        }
+    });
+}
+loadDatabaseToMemory();
+
+const stories = [];
+const messages = {};
+const onlineUsers = {};
 
 // ===================== HELPERS =====================
 function getRoomKey(emailA, emailB) {
@@ -43,9 +84,9 @@ function generateToken() {
 }
 
 function getUserByToken(token) {
-    const email = sessions[token];
+    const email = sessionsCache[token];
     if (!email) return null;
-    return users[email] || null;
+    return usersCache[email] || null;
 }
 
 // ===================== REST API =====================
@@ -62,16 +103,26 @@ app.post('/api/register', async (req, res) => {
     const emailLow = email.toLowerCase();
     const usernameLow = username.toLowerCase();
 
-    if (users[emailLow]) return res.status(409).json({ error: 'Bu e-posta zaten kayıtlı.' });
+    if (usersCache[emailLow]) return res.status(409).json({ error: 'Bu e-posta zaten kayıtlı.' });
     if (usernameIndex[usernameLow]) return res.status(409).json({ error: 'Bu kullanıcı adı alınmış.' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = { id: uuidv4(), email: emailLow, username, passwordHash, profilePhoto: '', createdAt: Date.now() };
-    users[emailLow] = user;
+    const userId = uuidv4();
+    const createdAt = Date.now();
+
+    // SQLite'a kaydet
+    db.run("INSERT INTO users (id, email, username, passwordHash, profilePhoto, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+        [userId, emailLow, username, passwordHash, '', createdAt], (err) => {
+            if (err) console.error("Kayıt hatası", err);
+        });
+
+    const user = { id: userId, email: emailLow, username, passwordHash, profilePhoto: '', createdAt };
+    usersCache[emailLow] = user;
     usernameIndex[usernameLow] = emailLow;
 
     const token = generateToken();
-    sessions[token] = emailLow;
+    db.run("INSERT INTO sessions (token, email) VALUES (?, ?)", [token, emailLow]);
+    sessionsCache[token] = emailLow;
 
     res.json({ token, user: { id: user.id, email: user.email, username: user.username, profilePhoto: user.profilePhoto } });
 });
@@ -82,14 +133,15 @@ app.post('/api/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Eksik alan.' });
 
     const emailLow = email.toLowerCase();
-    const user = users[emailLow];
+    const user = usersCache[emailLow];
     if (!user) return res.status(401).json({ error: 'E-posta veya şifre hatalı.' });
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'E-posta veya şifre hatalı.' });
 
     const token = generateToken();
-    sessions[token] = emailLow;
+    db.run("INSERT INTO sessions (token, email) VALUES (?, ?)", [token, emailLow]);
+    sessionsCache[token] = emailLow;
     res.json({ token, user: { id: user.id, email: user.email, username: user.username, profilePhoto: user.profilePhoto } });
 });
 
@@ -100,11 +152,14 @@ app.delete('/api/account', (req, res) => {
     if (!user) return res.status(401).json({ error: 'Yetkisiz.' });
 
     // Remove all sessions for user
-    for (const [t, em] of Object.entries(sessions)) {
-        if (em === user.email) delete sessions[t];
+    for (const [t, em] of Object.entries(sessionsCache)) {
+        if (em === user.email) delete sessionsCache[t];
     }
     delete usernameIndex[user.username.toLowerCase()];
-    delete users[user.email];
+    delete usersCache[user.email];
+
+    db.run("DELETE FROM users WHERE email = ?", [user.email]);
+    db.run("DELETE FROM sessions WHERE email = ?", [user.email]);
 
     res.json({ ok: true });
 });
@@ -125,7 +180,7 @@ app.get('/api/search-user/:query', (req, res) => {
     for (const [unameLow, email] of Object.entries(usernameIndex)) {
         if (email === me.email) continue; // skip self
         if (unameLow.includes(q)) {
-            const u = users[email];
+            const u = usersCache[email];
             results.push({ username: u.username, profilePhoto: u.profilePhoto || '' });
         }
         if (results.length >= 20) break;
@@ -141,6 +196,7 @@ app.post('/api/profile-photo', (req, res) => {
     const { photo } = req.body;
     if (!photo) return res.status(400).json({ error: 'Fotoğraf gerekli.' });
     user.profilePhoto = photo;
+    db.run("UPDATE users SET profilePhoto = ? WHERE email = ?", [photo, user.email]);
     // Notify online users about profile update
     io.emit('profile_update', { username: user.username, profilePhoto: photo });
     res.json({ ok: true });
@@ -227,7 +283,7 @@ io.on('connection', (socket) => {
     socket.on('chat_message', ({ toUsername, type, content }) => {
         if (!currentUser) return;
         const targetEntry = Object.entries(onlineUsers).find(([, u]) => u.username === toUsername);
-        const roomKey = getRoomKey(currentUser.email, targetEntry ? users[targetEntry[1].email]?.email : toUsername);
+        const roomKey = getRoomKey(currentUser.email, targetEntry ? usersCache[targetEntry[1].email]?.email : toUsername);
         const msg = {
             id: uuidv4(),
             from: currentUser.email,
