@@ -6,7 +6,7 @@
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Surbit 🇸🇾</title>
-    <meta name="description" content="Surbit: Offline P2P QR mesajlaşma uygulaması.">
+    <meta name="description" content="Surbit: İnternet üzerinden güvenli P2P mesajlaşma.">
     <meta name="theme-color" content="#007A33">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15,14 +15,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-    <!-- ===== GİRİŞ EKRANI ===== -->
+    <!-- ===== GİRİŞ / KAYIT EKRANI ===== -->
     <div id="login-overlay">
         <div class="login-bg-flag">
             <div class="flag-stripe green"></div>
@@ -35,11 +34,36 @@
                 <button class="lang-btn" id="lang-ar" onclick="changeLanguage('ar')">🇸🇾</button>
                 <button class="lang-btn" id="lang-en" onclick="changeLanguage('en')">🇺🇸</button>
             </div>
-            <img src="icon.png" class="login-icon" alt="Surbit Icon">
+            <img src="icon.png" class="login-icon" alt="Surbit Icon" onerror="this.style.display='none'">
             <h2 id="lang-welcome">Surbit</h2>
-            <p id="lang-instruction">Bir rumuz girerek başlayın.</p>
-            <input type="text" id="username-input" placeholder="Rumuz..." maxlength="15" autocomplete="off">
-            <button class="login-btn ripple" id="login-btn">Bağlan</button>
+            <p id="lang-instruction">Giriş yapın veya kayıt olun</p>
+
+            <!-- Tab switcher -->
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Giriş</button>
+                <button class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Kayıt Ol</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="form-login">
+                <input type="email" id="login-email" placeholder="E-posta..." autocomplete="email">
+                <input type="password" id="login-password" placeholder="Şifre..." autocomplete="current-password">
+                <div id="login-error" class="auth-error hidden"></div>
+                <button class="login-btn ripple" id="login-submit-btn" onclick="handleLogin()">Giriş Yap</button>
+            </div>
+
+            <!-- Register Form -->
+            <div id="form-register" class="hidden">
+                <input type="email" id="reg-email" placeholder="E-posta..." autocomplete="email">
+                <input type="text" id="reg-username" placeholder="Kullanıcı adı (3-20 karakter)..." maxlength="20"
+                    autocomplete="username">
+                <div id="username-check" class="username-check-msg"></div>
+                <input type="password" id="reg-password" placeholder="Şifre (en az 6 karakter)..."
+                    autocomplete="new-password">
+                <div id="reg-error" class="auth-error hidden"></div>
+                <button class="login-btn ripple" id="reg-submit-btn" onclick="handleRegister()">Kayıt Ol</button>
+            </div>
+
             <p class="encryption-msg" id="lang-encryption">Uçtan Uca Şifreli 🔒</p>
         </div>
     </div>
@@ -65,7 +89,7 @@
     <!-- ===== ANA KONTEYNER ===== -->
     <div class="container">
 
-        <!-- ===== DM LİSTESİ ===== -->
+        <!-- ===== DM + STORY LİSTESİ ===== -->
         <div id="dm-view" class="view-active">
             <header>
                 <div class="header-left">
@@ -81,15 +105,22 @@
                         </div>
                     </div>
                     <button id="settings-btn" class="icon-circle-btn ripple" title="Ayarlar">⚙️</button>
-                    <button id="new-conn-btn" class="icon-circle-btn green ripple" title="Yeni Bağlantı">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="white" stroke-width="2.5"
+                    <button id="search-user-btn" class="icon-circle-btn green ripple" title="Kullanıcı Ara">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="white" stroke-width="2.5"
                             stroke-linecap="round">
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
+                            <circle cx="11" cy="11" r="7" />
+                            <line x1="16.5" y1="16.5" x2="21" y2="21" />
                         </svg>
                     </button>
                 </div>
             </header>
+
+            <!-- STORIES BAR -->
+            <div id="stories-bar">
+                <div id="stories-list">
+                    <!-- Dynamic stories injected here -->
+                </div>
+            </div>
 
             <div id="dm-list-container">
                 <div class="dm-section-title" id="lang-active-title">Bağlantılar</div>
@@ -97,97 +128,12 @@
                     <div class="empty-state">
                         <div class="empty-icon">📡</div>
                         <div id="lang-no-conn">Henüz bağlantı yok.</div>
-                        <div class="empty-hint" id="lang-no-conn-hint">Sağ üstteki + butonuna bas.</div>
+                        <div class="empty-hint" id="lang-no-conn-hint">Sağ üstteki arama butonuna bas.</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ===== QR BAĞLANTI EKRANI ===== -->
-        <div id="qr-view" class="view-hidden">
-            <header>
-                <button id="back-from-qr" class="icon-btn back-btn ripple">←</button>
-                <h1 id="lang-qr-title" style="font-size:1.1rem;">Yeni Bağlantı</h1>
-                <div style="width:40px;"></div>
-            </header>
-
-            <div id="qr-content">
-                <!-- Adım 1: Rol Seçimi -->
-                <div id="step-role" class="qr-step">
-                    <div class="step-icon">🤝</div>
-                    <h2 id="lang-role-title">Rol Seç</h2>
-                    <p id="lang-role-desc">Bağlantıyı kim başlatıyor?</p>
-                    <button class="qr-big-btn green ripple" id="btn-host" onclick="startAsHost()">
-                        📤 <span id="lang-host-btn">QR Oluştur (Ben başlatıyorum)</span>
-                    </button>
-                    <button class="qr-big-btn outline ripple" id="btn-guest" onclick="startAsGuest()">
-                        📷 <span id="lang-guest-btn">QR Tara (Karşıdan başlatıldı)</span>
-                    </button>
-                </div>
-
-                <!-- HOST: QR Göster -->
-                <div id="step-host-qr" class="qr-step" style="display:none;">
-                    <p class="step-label" id="lang-step1">Adım 1/2 · Bu QR'ı karşı cihaza okut</p>
-                    <canvas id="qr-canvas" class="qr-canvas"></canvas>
-                    <p class="qr-hint" id="lang-host-hint">Karşı cihaz QR'ı okutunca devam...</p>
-                    <button class="qr-big-btn outline ripple" onclick="hostStep2()">
-                        📷 <span id="lang-host-next">Karşıdan QR Tara</span>
-                    </button>
-                </div>
-
-                <!-- GUEST: QR Tara -->
-                <div id="step-guest-scan" class="qr-step" style="display:none;">
-                    <p class="step-label" id="lang-step-g1">Adım 1/2 · Karşıdaki ekranı kamerana göster</p>
-                    <div class="camera-wrap">
-                        <video id="scan-video" autoplay playsinline muted></video>
-                        <div class="scan-overlay">
-                            <div class="scan-corner tl"></div>
-                            <div class="scan-corner tr"></div>
-                            <div class="scan-corner bl"></div>
-                            <div class="scan-corner br"></div>
-                            <div class="scan-line"></div>
-                        </div>
-                    </div>
-                    <p class="qr-hint" id="lang-scan-hint">QR koda odaklan...</p>
-                    <canvas id="scan-canvas" style="display:none;"></canvas>
-                </div>
-
-                <!-- HOST: Cevap Tara -->
-                <div id="step-host-scan" class="qr-step" style="display:none;">
-                    <p class="step-label" id="lang-step2">Adım 2/2 · Karşıdaki cevap QR'ını tara</p>
-                    <div class="camera-wrap">
-                        <video id="scan-video2" autoplay playsinline muted></video>
-                        <div class="scan-overlay">
-                            <div class="scan-corner tl"></div>
-                            <div class="scan-corner tr"></div>
-                            <div class="scan-corner bl"></div>
-                            <div class="scan-corner br"></div>
-                            <div class="scan-line"></div>
-                        </div>
-                    </div>
-                    <p class="qr-hint" id="lang-step2-hint">Cevap QR'ına odaklan...</p>
-                    <canvas id="scan-canvas2" style="display:none;"></canvas>
-                </div>
-
-                <!-- GUEST: Cevap QR Göster -->
-                <div id="step-guest-qr" class="qr-step" style="display:none;">
-                    <p class="step-label" id="lang-step-g2">Adım 2/2 · Bu QR'ı karşı cihaza okut</p>
-                    <canvas id="qr-canvas2" class="qr-canvas"></canvas>
-                    <p class="qr-hint" id="lang-guest-hint">Karşı cihaz okuyunca bağlantı kurulacak...</p>
-                </div>
-
-                <!-- Bağlanıyor -->
-                <div id="step-connecting" class="qr-step" style="display:none;">
-                    <div class="connecting-anim">
-                        <div class="conn-ring"></div>
-                        <div class="conn-ring r2"></div>
-                        <div class="conn-icon">🔗</div>
-                    </div>
-                    <h2 id="lang-connecting">Bağlanıyor...</h2>
-                    <p id="lang-connecting-hint" class="qr-hint">WebRTC Tüneli Kuruluyor</p>
-                </div>
-            </div>
-        </div>
 
         <!-- ===== AYARLAR EKRANI ===== -->
         <div id="settings-view" class="view-hidden">
@@ -198,18 +144,25 @@
             </header>
 
             <div id="settings-content">
+                <!-- Profil -->
                 <div class="settings-section">
                     <div class="settings-label" id="lang-settings-profile">Profil</div>
                     <div class="settings-card">
-                        <div class="settings-avatar" id="settings-avatar-initial">S</div>
+                        <div class="settings-avatar-wrap-pp" onclick="pickProfilePhoto()">
+                            <img id="settings-pp-img" class="settings-pp" style="display:none;" alt="">
+                            <div class="settings-avatar" id="settings-avatar-initial">S</div>
+                            <div class="pp-edit-badge">📷</div>
+                        </div>
                         <div class="settings-name-area">
                             <div class="settings-username" id="settings-display-name">Kullanıcı</div>
-                            <button class="settings-change-btn ripple" id="change-name-btn" id="lang-change-name">✏️
-                                İsim Değiştir</button>
+                            <div class="settings-email" id="settings-display-email">email@...</div>
                         </div>
                     </div>
+                    <input type="file" id="pp-file-input" accept="image/*" style="display:none;"
+                        onchange="profilePhotoChosen(event)">
                 </div>
 
+                <!-- Görünüm -->
                 <div class="settings-section">
                     <div class="settings-label" id="lang-settings-appearance">Görünüm</div>
                     <div class="settings-row ripple" id="dark-mode-row" onclick="toggleDarkMode()">
@@ -221,6 +174,7 @@
                     </div>
                 </div>
 
+                <!-- İzinler -->
                 <div class="settings-section">
                     <div class="settings-label" id="lang-settings-permissions">İzinler</div>
                     <div class="settings-row ripple" onclick="requestCameraPermission()">
@@ -233,19 +187,41 @@
                         <div class="settings-row-text" id="lang-perm-mic">Mikrofon İzni Ver</div>
                         <div class="perm-badge" id="mic-perm-badge">—</div>
                     </div>
+                    <div class="settings-row ripple" onclick="requestNotifPermission()">
+                        <div class="settings-row-icon">🔔</div>
+                        <div class="settings-row-text">Bildirim İzni Ver</div>
+                        <div class="perm-badge" id="notif-perm-badge">—</div>
+                    </div>
                 </div>
 
+
+
+                <!-- Hakkında -->
                 <div class="settings-section">
                     <div class="settings-label" id="lang-settings-about">Hakkında</div>
                     <div class="settings-row">
                         <div class="settings-row-icon">🇸🇾</div>
-                        <div class="settings-row-text">Surbit P2P</div>
-                        <div class="perm-badge">v2.0</div>
+                        <div class="settings-row-text">Surbit</div>
+                        <div class="perm-badge">v3.0</div>
                     </div>
                     <div class="settings-row">
                         <div class="settings-row-icon">🔒</div>
                         <div class="settings-row-text" id="lang-settings-enc">Uçtan Uca Şifreli</div>
                         <div class="perm-badge green">✓</div>
+                    </div>
+                </div>
+
+                <!-- Hesap -->
+                <div class="settings-section">
+                    <div class="settings-label">Hesap</div>
+                    <div class="settings-row ripple" id="logout-btn" onclick="handleLogout()">
+                        <div class="settings-row-icon">🚪</div>
+                        <div class="settings-row-text" style="color: var(--text);">Çıkış Yap</div>
+                    </div>
+                    <div class="settings-row ripple danger-row" id="delete-account-btn"
+                        onclick="confirmDeleteAccount()">
+                        <div class="settings-row-icon">🗑️</div>
+                        <div class="settings-row-text" style="color: var(--red);">Hesabı Kalıcı Sil</div>
                     </div>
                 </div>
             </div>
@@ -259,7 +235,7 @@
                     <div class="chat-peer-avatar" id="chat-peer-avatar">?</div>
                     <div class="chat-header-info">
                         <div id="chat-with-name">...</div>
-                        <div class="chat-status" id="lang-p2p-status">P2P Aktif 🔒</div>
+                        <div class="chat-status" id="lang-p2p-status">Çevrimiçi 🟢</div>
                     </div>
                 </div>
                 <div class="lang-dropdown">
@@ -276,7 +252,9 @@
                 <div id="messages"></div>
             </div>
 
-            <div class="chat-footer">
+            <div class="chat-footer" id="chat-footer">
+                <button class="footer-action-btn ripple" id="photo-btn" title="Fotoğraf Gönder"
+                    onclick="openPhotoMenu()">📷</button>
                 <button class="footer-action-btn ripple" id="mic-btn" title="Sesli Mesaj">🎤</button>
                 <div class="input-wrapper">
                     <input type="text" id="message-input" placeholder="Mesaj yazın..." disabled autocomplete="off">
@@ -299,16 +277,118 @@
             </div>
         </div>
 
+        <!-- ===== STORY VIEWER ===== -->
+        <div id="story-view" class="view-hidden">
+            <div id="story-viewer-bg"></div>
+            <div id="story-viewer-header">
+                <div id="story-progress-bar">
+                    <div id="story-progress-fill"></div>
+                </div>
+                <div id="story-viewer-meta">
+                    <div class="story-viewer-avatar" id="sv-avatar">?</div>
+                    <div>
+                        <div id="sv-username" style="font-weight:800; color:#fff;">...</div>
+                        <div id="sv-time" style="font-size:0.7rem; opacity:0.7; color:#fff;">...</div>
+                    </div>
+                </div>
+                <button id="close-story-btn" onclick="closeStoryViewer()">✕</button>
+            </div>
+            <div id="story-viewer-content">
+                <img id="sv-img" style="display:none; max-width:100%; max-height:75vh; border-radius:16px;" alt="">
+                <video id="sv-video" style="display:none; max-width:100%; max-height:75vh; border-radius:16px;" autoplay
+                    muted playsinline></video>
+                <div id="sv-text" class="story-text-content"></div>
+            </div>
+            <div id="story-nav">
+                <div onclick="prevStory()"></div>
+                <div onclick="nextStory()"></div>
+            </div>
+            <!-- Delete own story -->
+            <button id="sv-delete-btn" onclick="deleteCurrentStory()" style="display:none;">🗑️ Sil</button>
+        </div>
+
+    </div><!-- end .container -->
+
+    <!-- ===== MODALS ===== -->
+
+    <!-- İsim Değiştir Modal (kaldırıldı, artık kullanıcı adı kayıtta belirleniyor) -->
+
+    <!-- Hesap Silme Onay Modal -->
+    <div id="delete-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div style="font-size:2.5rem; margin-bottom:1rem;">⚠️</div>
+            <h3 style="color: var(--red);">Hesabı Sil</h3>
+            <p style="color:var(--text2); font-size:0.88rem; margin-bottom:1.2rem;">Bu işlem geri alınamaz. Kullanıcı
+                adınız da serbest bırakılacak.</p>
+            <input type="password" id="delete-confirm-password" placeholder="Şifrenizi girin..."
+                style="width:100%; padding:0.9rem; border-radius:14px; border:2px solid var(--border); background:var(--input-bg); font-size:0.95rem; color:var(--text); text-align:center; outline:none; margin-bottom:1rem;">
+            <div class="modal-actions">
+                <button class="modal-btn secondary ripple" onclick="closeDeleteModal()">İptal</button>
+                <button class="modal-btn ripple" style="background:var(--red); color:white;"
+                    onclick="executeDeleteAccount()">Sil</button>
+            </div>
+        </div>
     </div>
 
-    <!-- İsim Değiştir Modal -->
-    <div id="name-modal" class="modal-overlay hidden">
-        <div class="modal-card">
-            <h3 id="lang-rename-title">İsim Değiştir</h3>
-            <input type="text" id="new-name-input" maxlength="15" placeholder="Yeni rumuz...">
+    <!-- Hikaye Oluştur Modal -->
+    <div id="story-composer" class="modal-overlay hidden">
+        <div class="modal-card" style="max-width:360px;">
+            <h3>✨ Hikaye Ekle</h3>
+            <p style="color:var(--text2); font-size:0.82rem; margin-bottom:1rem;">Hikaye 24 saat sonra otomatik olarak
+                silinir.</p>
+            <div id="story-preview-wrap"
+                style="display:none; margin-bottom:1rem; border-radius:14px; overflow:hidden; max-height:200px;">
+                <img id="story-preview-img" style="width:100%; display:none;" alt="">
+            </div>
+            <textarea id="story-text-input" placeholder="Metin hikayesi yaz..."
+                style="width:100%; height:90px; padding:0.8rem; border-radius:14px; border:2px solid var(--border); background:var(--input-bg); color:var(--text); font-size:0.95rem; resize:none; outline:none; font-family:inherit; margin-bottom:0.8rem;"></textarea>
+            <div style="display:flex; gap:8px; margin-bottom:1rem;">
+                <button class="modal-btn secondary ripple" style="flex:1; font-size:0.82rem;"
+                    onclick="storyPickPhoto()">📷 Fotoğraf</button>
+            </div>
+            <input type="file" id="story-photo-input" accept="image/*" style="display:none;"
+                onchange="storyPhotoSelected(event)">
+            <div id="story-error" class="auth-error hidden"></div>
             <div class="modal-actions">
-                <button class="modal-btn secondary ripple" onclick="closeNameModal()" id="lang-cancel">İptal</button>
-                <button class="modal-btn primary ripple" onclick="saveName()" id="lang-save">Kaydet</button>
+                <button class="modal-btn secondary ripple" onclick="closeStoryComposer()">İptal</button>
+                <button class="modal-btn primary ripple" onclick="submitStory()">Paylaş</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fotoğraf Menüsü -->
+    <div id="photo-menu" class="bottom-sheet hidden">
+        <div class="bottom-sheet-handle"></div>
+        <div class="photo-menu-options">
+            <button class="photo-opt-btn ripple" onclick="photoFromGallery()">
+                <div class="photo-opt-icon">🖼️</div>
+                <div>Galeriden Seç</div>
+            </button>
+            <button class="photo-opt-btn ripple" onclick="photoFromCamera()">
+                <div class="photo-opt-icon">📸</div>
+                <div>Kamerayı Aç</div>
+            </button>
+            <button class="photo-opt-btn ripple cancel-opt" onclick="closePhotoMenu()">
+                <div>İptal</div>
+            </button>
+        </div>
+        <input type="file" id="gallery-input" accept="image/*" style="display:none;"
+            onchange="galleryPhotoChosen(event)">
+        <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none;"
+            onchange="galleryPhotoChosen(event)">
+    </div>
+
+    <div id="photo-menu-backdrop" class="hidden" onclick="closePhotoMenu()"></div>
+
+    <!-- Kullanıcı Arama Modal -->
+    <div id="search-modal" class="modal-overlay hidden">
+        <div class="modal-card" style="max-width:380px; padding:1.5rem;">
+            <h3>🔍 Kullanıcı Ara</h3>
+            <input type="text" id="search-user-input" placeholder="Kullanıcı adı ara..." autocomplete="off"
+                style="width:100%; padding:0.85rem 1rem; border-radius:14px; border:2px solid var(--border); background:var(--input-bg); font-size:0.92rem; color:var(--text); outline:none; margin-bottom:0.8rem;">
+            <div id="search-results" style="max-height:250px; overflow-y:auto;"></div>
+            <div class="modal-actions" style="margin-top:0.8rem;">
+                <button class="modal-btn secondary ripple" onclick="closeSearchModal()">Kapat</button>
             </div>
         </div>
     </div>
