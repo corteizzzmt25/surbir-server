@@ -19,24 +19,19 @@ let micPermGranted = false;
 let socket = null;
 let allStories = [];
 let currentStoryIndex = 0;
-let storyTimer = null;
 let storyMediaData = null;
+const API_BASE_URL = 'https://surbir-server.onrender.com';
 
 // ============ ÇEVİRİLER ============
 const T = {
     tr: {
         welcome: 'Surbit', instruction: 'Giriş yapın veya kayıt olun',
         login_btn: 'Giriş Yap', register_btn: 'Kayıt Ol',
-        encryption: 'Uçtan Uca Şifreli 🔒', header_sub: 'P2P Şifreli Mesajlaşma',
-        active_title: 'Bağlantılar', no_conn: 'Henüz bağlantı yok.',
-        no_conn_hint: 'Sağ üstteki + butonuna bas.', qr_title: 'Yeni Bağlantı',
-        role_title: 'Rol Seç', role_desc: 'Bağlantıyı kim başlatıyor?',
-        host_btn: 'QR Oluştur (Ben başlatıyorum)', guest_btn: 'QR Tara (Karşıdan başlatıldı)',
-        step1: "Adım 1/2 · Bu QR'ı karşı cihaza okut", host_hint: "Karşı cihaz QR'ı okutunca devam...",
-        host_next: "Karşıdan QR Tara", step_g1: 'Adım 1/2 · Karşıdaki ekranı kamerana göster',
-        scan_hint: 'QR koda odaklan...', step2: "Adım 2/2 · Karşıdaki cevap QR'ını tara",
-        guest_hint: 'Karşı cihaz okuyunca bağlantı kurulacak...', connecting: 'Bağlanıyor...',
-        connecting_hint: 'WebRTC Tüneli Kuruluyor', p2p_status: 'Çevrimiçi 🟢',
+        login_btn: 'Giriş Yap', register_btn: 'Kayıt Ol',
+        encryption: 'Uçtan Uca Şifreli 🔒', header_sub: 'Şifreli Mesajlaşma',
+        active_title: 'Mesajlar', no_conn: 'Henüz mesaj yok.',
+        no_conn_hint: 'Sağ üstteki arama butonunu kullan.',
+        p2p_status: 'Çevrimiçi 🟢',
         placeholder: 'Mesaj yazın...', settings_title: 'Ayarlar',
         settings_profile: 'Profil', settings_appearance: 'Görünüm',
         settings_permissions: 'İzinler', settings_about: 'Hakkında',
@@ -48,37 +43,27 @@ const T = {
     ar: {
         welcome: 'سوربيت', instruction: 'قم بتسجيل الدخول أو إنشاء حساب',
         login_btn: 'دخول', register_btn: 'تسجيل',
-        encryption: 'مشفر من طرف إلى طرف 🔒', header_sub: 'رسائل P2P مشفرة',
-        active_title: 'الاتصالات', no_conn: 'لا توجد اتصالات بعد.',
-        no_conn_hint: 'اضغط زر + في أعلى اليمين.', qr_title: 'اتصال جديد',
-        role_title: 'اختر الدور', role_desc: 'من يبدأ الاتصال؟',
-        host_btn: 'إنشاء QR (أنا أبدأ)', guest_btn: 'مسح QR (الطرف الآخر بدأ)',
-        step1: 'الخطوة 1/2 · اعرض هذا QR للجهاز الآخر', host_hint: 'انتظر حتى يمسح الجهاز الآخر...',
-        host_next: 'امسح QR الجهاز الآخر', step_g1: 'الخطوة 1/2 · وجّه الكاميرا نحو الشاشة الأخرى',
-        scan_hint: 'ركز على رمز QR...', step2: 'الخطوة 2/2 · امسح QR الرد',
-        guest_hint: 'سيتصل الجهاز الآخر عند المسح...', connecting: 'جارٍ الاتصال...',
-        connecting_hint: 'إنشاء نفق WebRTC', p2p_status: 'متصل 🟢',
+        login_btn: 'دخول', register_btn: 'تسجيل',
+        encryption: 'مشفر 🔒', header_sub: 'مراسلة مشفرة',
+        active_title: 'الرسائل', no_conn: 'لا توجد رسائل بعد.',
+        no_conn_hint: 'استخدم زر البحث في الأعلى.',
+        p2p_status: 'متصل 🟢',
         placeholder: 'اكتب رسالة...', settings_title: 'الإعدادات',
         settings_profile: 'الملف الشخصي', settings_appearance: 'المظهر',
         settings_permissions: 'الأذونات', settings_about: 'حول التطبيق',
         dark_mode: 'الوضع الداكن', perm_camera: 'إذن الكاميرا',
-        perm_mic: 'إذن الميكروفون', settings_enc: 'مشفر من طرف لطرف',
+        perm_mic: 'إذن الميكروفون', settings_enc: 'مشفر',
         perm_granted: '✓ ممنوح', perm_denied: '✗ مرفوض',
         tab_login: 'دخول', tab_register: 'تسجيل', rec_hint: 'جارٍ التسجيل...'
     },
     en: {
         welcome: 'Surbit', instruction: 'Sign in or create an account',
         login_btn: 'Sign In', register_btn: 'Sign Up',
-        encryption: 'End-to-End Encrypted 🔒', header_sub: 'Encrypted P2P Messaging',
-        active_title: 'Connections', no_conn: 'No connections yet.',
-        no_conn_hint: 'Tap the + button above.', qr_title: 'New Connection',
-        role_title: 'Choose Role', role_desc: 'Who initiates the connection?',
-        host_btn: "Generate QR (I'm the host)", guest_btn: 'Scan QR (Peer is the host)',
-        step1: 'Step 1/2 · Show this QR to the other device', host_hint: 'Waiting for the other device to scan...',
-        host_next: "Scan Peer's QR", step_g1: 'Step 1/2 · Point camera at the other screen',
-        scan_hint: 'Focus on the QR code...', step2: 'Step 2/2 · Scan the answer QR',
-        guest_hint: 'The other device will connect when scanned...', connecting: 'Connecting...',
-        connecting_hint: 'Establishing WebRTC Tunnel', p2p_status: 'Online 🟢',
+        login_btn: 'Sign In', register_btn: 'Sign Up',
+        encryption: 'End-to-End Encrypted 🔒', header_sub: 'Encrypted Messaging',
+        active_title: 'Messages', no_conn: 'No messages yet.',
+        no_conn_hint: 'Use the search button above.',
+        p2p_status: 'Online 🟢',
         placeholder: 'Type a message...', settings_title: 'Settings',
         settings_profile: 'Profile', settings_appearance: 'Appearance',
         settings_permissions: 'Permissions', settings_about: 'About',
@@ -114,8 +99,7 @@ function applyTranslations() {
     set('lang-active-title', t.active_title);
     set('lang-no-conn', t.no_conn);
     set('lang-no-conn-hint', t.no_conn_hint);
-    set('lang-connecting', t.connecting);
-    set('lang-connecting-hint', t.connecting_hint);
+
     set('lang-p2p-status', t.p2p_status);
     set('lang-settings-title', t.settings_title);
     set('lang-settings-profile', t.settings_profile);
@@ -190,18 +174,18 @@ window.switchAuthTab = (tab) => {
 
 // ============ API HELPERS ============
 async function apiPost(url, body) {
-    const res = await fetch(url, {
+    const res = await fetch(API_BASE_URL + url, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + AUTH_TOKEN },
         body: JSON.stringify(body)
     });
     return res.json();
 }
 async function apiGet(url) {
-    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN } });
+    const res = await fetch(API_BASE_URL + url, { headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN } });
     return res.json();
 }
 async function apiDelete(url) {
-    const res = await fetch(url, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN } });
+    const res = await fetch(API_BASE_URL + url, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN } });
     return res.json();
 }
 
@@ -278,7 +262,7 @@ window.executeDeleteAccount = async () => {
 // ============ SOCKET.IO ============
 function connectSocket() {
     if (socket) socket.disconnect();
-    socket = io({ transports: ['websocket', 'polling'] });
+    socket = io(API_BASE_URL, { transports: ['websocket', 'polling'] });
     socket.on('connect', () => {
         socket.emit('authenticate', { token: AUTH_TOKEN });
     });

@@ -246,7 +246,62 @@ header h1 {
     background: var(--input-bg);
 }
 
-/* ==================== LOGIN ==================== */
+/* ==================== LOGIN AND LANG SELECTOR ==================== */
+.lang-selector {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    z-index: 10;
+    position: relative;
+}
+
+.lang-btn {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lang-btn.active {
+    box-shadow: 0 0 0 2px var(--green);
+    transform: scale(1.1);
+}
+
+.auth-error {
+    color: var(--red);
+    font-size: 0.85rem;
+    text-align: center;
+    margin-top: -10px;
+    margin-bottom: 10px;
+}
+
+.auth-error.hidden {
+    display: none;
+}
+
+.username-check-msg {
+    font-size: 0.8rem;
+    margin-top: -8px;
+    margin-bottom: 8px;
+    padding-left: 14px;
+}
+
+.username-check-msg.available {
+    color: var(--green);
+}
+
+.username-check-msg.taken {
+    color: var(--red);
+}
+
 #login-overlay {
     position: fixed;
     inset: 0;
